@@ -1,0 +1,40 @@
+WHITESPACE = _{ " " | NEWLINE }
+source = _{ SOI ~ statement* ~ &EOI }
+
+statement = _{ bind | expression }
+expression = _{ comparison }
+
+bind = { identify ~ ":" ~ expression }
+
+comparison = _{ additive ~ (equal | not_equal)* }
+equal = { "=" ~  additive }
+not_equal = { "!=" ~  additive }
+
+additive = { multitive ~ (add | sub)* }
+add = { "+" ~  multitive }
+sub = { "-" ~  multitive }
+
+multitive = { primary ~ (mul | div | surplus)* }
+mul = { "*" ~ primary }
+div = { "/" ~ primary }
+surplus = { "%" ~ primary }
+  
+primary = _{
+  "(" ~ parenthesis ~ ")" | block | _if | literal | evaluation
+}
+
+parenthesis = { expression }
+
+block = { "{" ~ statement* ~ "}" }
+_if = { "if" ~ expression ~ expression ~ expression }
+literal = _{ number | string }
+
+
+string = ${ "\"" ~ char* ~ "\"" }
+char = @{ (!"\"" ~ ANY) }
+
+number = ${ ASCII_DIGIT+ }
+
+evaluation = { identify ~ calling* ~ ("." ~ identify ~ calling*)* }
+calling = { "(" ~ expression ~ ")" }
+identify = { (ASCII_ALPHA | "_")+ }

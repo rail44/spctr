@@ -1,0 +1,10 @@
+[package]
+name = "spectr"
+version = "0.1.0"
+authors = ["Satoshi Amemiya <satoshi_amemiya@voyagegroup.com>"]
+edition = "2018"
+
+[dependencies]
+pest = "2.1.1"
+clap = "2.33.0"
+pest_derive = "2.1.0"
