@@ -1,7 +1,6 @@
 WHITESPACE = _{ " " | NEWLINE }
-source = _{ SOI ~ statement* ~ &EOI }
+source = _{ SOI ~ bind* ~ expression? ~ &EOI }
 
-statement = _{ bind | expression }
 expression = _{ comparison }
 
 bind = { identify ~ ":" ~ expression }
@@ -25,7 +24,7 @@ primary = _{
 
 parenthesis = { expression }
 
-block = { "{" ~ statement* ~ "}" }
+block = { "{" ~ bind* ~ expression? ~ "}" }
 _if = { "if" ~ expression ~ expression ~ expression }
 literal = _{ number | string }
 
