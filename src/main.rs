@@ -25,24 +25,33 @@ struct Env {
 
 impl Env {
     fn get_value(&mut self, name: &str) -> Type {
-        self.binds.remove(name).unwrap().eval(self)
+        if let Some(evaluated) = self.evaluated.get(name) {
+            return evaluated.clone();
+        }
+
+        if let Some(binded) = self.binds.remove(name) {
+            let value = binded.eval(self);
+            self.evaluated.insert(name.to_string(), value.clone());
+            return value;
+        }
+        self.parent.as_ref().unwrap().borrow_mut().get_value(name)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 struct Source {
     binds: HashMap<String, Additive>,
-    expressions: Vec<Additive>
+    expression: Option<Additive>
 }
 
 impl Source {
-    fn eval(mut self) -> Type {
+    fn eval(self) -> Type {
         let mut env = Env {
             binds: self.binds,
             evaluated: HashMap::new(),
             parent: None,
         };
-        self.expressions.pop().unwrap().eval(&mut env)
+        self.expression.unwrap().eval(&mut env)
     }
 }
 
@@ -50,7 +59,7 @@ impl Source {
 impl From<Pairs<'_, Rule>> for Source {
     fn from(pairs: Pairs<Rule>) -> Self {
         let mut binds = HashMap::new();
-        let mut expressions = vec![];
+        let mut expression = None;
         for pair in pairs {
             match pair.as_rule() {
                 Rule::bind => {
@@ -59,13 +68,13 @@ impl From<Pairs<'_, Rule>> for Source {
                     let expression = Additive::from(inner.next().unwrap().into_inner());
                     binds.insert(name.to_string(), expression);
                 }
-                Rule::additive => expressions.push(Additive::from(pair.into_inner())),
+                Rule::additive => expression = Some(Additive::from(pair.into_inner())),
                 _ => unreachable!("{:?}", pair)
             }
         }
         Source {
             binds,
-            expressions
+            expression
         }
     }
 }
