@@ -4,6 +4,7 @@ use pest_derive::Parser as PestParser;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::iter::IntoIterator;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Type {
@@ -41,25 +42,37 @@ impl Env {
 #[derive(Debug, Clone, PartialEq)]
 struct Source {
     binds: HashMap<String, Additive>,
-    expression: Option<Additive>
+    expressions: Vec<Additive>
 }
 
 impl Source {
-    fn eval(self) -> Type {
+    fn eval(mut self) -> Type {
         let mut env = Env {
             binds: self.binds,
             evaluated: HashMap::new(),
             parent: None,
         };
-        self.expression.unwrap().eval(&mut env)
+        self.expressions.pop().unwrap().eval(&mut env)
+    }
+
+    fn call(mut self, args: Vec<Type>) -> Type {
+        let mut evaluated = HashMap::new();
+        for (v, p) in args.into_iter().zip(self.expressions.iter()) {
+            evaluated.insert(p.clone().into(), v);
+        }
+        let mut env = Env {
+            binds: self.binds,
+            evaluated,
+            parent: None,
+        };
+        self.expressions.pop().unwrap().eval(&mut env)
     }
 }
-
 
 impl From<Pairs<'_, Rule>> for Source {
     fn from(pairs: Pairs<Rule>) -> Self {
         let mut binds = HashMap::new();
-        let mut expression = None;
+        let mut expressions = vec![];
         for pair in pairs {
             match pair.as_rule() {
                 Rule::bind => {
@@ -68,13 +81,13 @@ impl From<Pairs<'_, Rule>> for Source {
                     let expression = Additive::from(inner.next().unwrap().into_inner());
                     binds.insert(name.to_string(), expression);
                 }
-                Rule::additive => expression = Some(Additive::from(pair.into_inner())),
+                Rule::additive => expressions.push(Additive::from(pair.into_inner())),
                 _ => unreachable!("{:?}", pair)
             }
         }
         Source {
             binds,
-            expression
+            expressions
         }
     }
 }
@@ -110,6 +123,16 @@ impl Additive {
         panic!("not a number");
     }
 }
+
+impl Into<String> for Additive {
+    fn into(self) -> String {
+        if let Primary::Evaluation(e) = self.left.left {
+            return e.left
+        }
+        panic!("{:?}", self);
+    }
+}
+
 
 impl From<Pairs<'_, Rule>> for Additive {
     fn from(mut pairs: Pairs<Rule>) -> Self {
@@ -303,7 +326,12 @@ impl Evaluation {
                         base = env.get_value(&name);
                     }
                 }
-                _ => unreachable!()
+                Call(arg) => {
+                    if let Type::Block(s) = base {
+                        let arg = arg.eval(env);
+                        base = s.call(vec![arg]);
+                    }
+                }
             }
         }
         base
@@ -333,8 +361,9 @@ enum EvaluationRight {
 impl From<Pair<'_, Rule>> for EvaluationRight {
     fn from(pair: Pair<Rule>) -> Self {
         use EvaluationRight::*;
+        println!("{:?}\n", pair);
         match pair.as_rule() {
-            Rule::calling => Call(Additive::from(pair.into_inner())),
+            Rule::calling => Call(Additive::from(pair.into_inner().next().unwrap().into_inner())),
             Rule::identify => Access(pair.as_str().to_string()),
             _ => unreachable!("{:?}", pair)
         }
@@ -342,18 +371,31 @@ impl From<Pair<'_, Rule>> for EvaluationRight {
 }
 
 #[test]
-fn test_bind_and_access() {
+fn test_call() {
     let ast = "hoge: {
-  foo: 12
-  bar: 23
-  baz: foo + bar
+  fuga,
+  fuga + 1
+},
+
+hoge(1)
+";
+    let pairs = Parser::parse(Rule::source, ast).unwrap();
+    let source = Source::from(pairs);
+    assert!(source.eval() == Type::Number(2.0));
 }
 
-  hoge.baz
+#[test]
+fn test_bind_and_access() {
+    let ast = "hoge: {
+  foo: 12,
+  bar: 23,
+  baz: foo + bar
+},
+
+hoge.baz
 ";
     let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
     assert!(source.eval() == Type::Number(35.0));
-
 }
 
 #[test]
@@ -390,29 +432,48 @@ fn test_parsing_string() {
 }
 
 #[test]
-fn test_parsing_source() {
-    let ast = "i: j";
+fn test_parsing_source_1() {
+    let ast = "i";
     Parser::parse(Rule::source, ast).unwrap();
-
-    let ast = "i: j / 2";
-    Parser::parse(Rule::source, ast).unwrap();
-
-    let ast = "i: j / 2
-j: 5
-k: k + 1
-
-i * (j + 3) + (j / i)";
-    Parser::parse(Rule::source, ast).unwrap();
-
-    let ast = "fizzbuzz: {
-  is_fizz: i % 3 = 0
-  is_buzz: i % 5 = 0
-  fizz: if is_fizz \"fizz\" \"\"
-  buzz: if is_buzz \"buzz\" \"\"
-
-  fizz.concat(buzz)
 }
 
-range({min: 1 max: 100}).map({i: fizzbuzz})";
+#[test]
+fn test_parsing_source_2() {
+    let ast = "1 + 2";
+    Parser::parse(Rule::source, ast).unwrap();
+}
+
+#[test]
+fn test_parsing_source_3() {
+    let ast = "i: j";
+    Parser::parse(Rule::source, ast).unwrap();
+}
+
+#[test]
+fn test_parsing_source_4() {
+    let ast = "i: j / 2,
+j: 5,
+k: k + 1,
+i * (j + 3) + (j / i)";
+    Parser::parse(Rule::source, ast).unwrap();
+}
+
+#[test]
+fn test_parsing_source_5() {
+    let ast = "fizzbuzz: {
+  is_fizz: i % 3 = 0,
+  is_buzz: i % 5 = 0,
+  fizz: if is_fizz \"fizz\" \"\",
+  buzz: if is_buzz \"buzz\" \"\",
+
+  fizz.concat(buzz)
+},
+range({min: 1, max: 100}).map({i: fizzbuzz})";
+    Parser::parse(Rule::source, ast).unwrap();
+}
+
+#[test]
+fn test_parsing_source_6() {
+    let ast = "i(1)";
     Parser::parse(Rule::source, ast).unwrap();
 }

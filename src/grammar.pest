@@ -1,6 +1,7 @@
 WHITESPACE = _{ " " | NEWLINE }
-source = _{ SOI ~ bind* ~ expression? ~ &EOI }
+source = _{ SOI ~ (statement ~ ("," ~ statement)*)? ~ &EOI }
 
+statement = _{ bind | expression }
 expression = _{ comparison }
 
 bind = { identify ~ ":" ~ expression }
@@ -24,7 +25,7 @@ primary = _{
 
 parenthesis = { expression }
 
-block = { "{" ~ bind* ~ expression? ~ "}" }
+block = { "{" ~ (statement ~ ("," ~ statement)*)? ~ "}" }
 _if = { "if" ~ expression ~ expression ~ expression }
 literal = _{ number | string }
 
@@ -36,4 +37,4 @@ number = ${ ASCII_DIGIT+ }
 
 evaluation = { identify ~ calling* ~ ("." ~ identify ~ calling*)* }
 calling = { "(" ~ expression ~ ")" }
-identify = { (ASCII_ALPHA | "_")+ }
+identify = ${ (ASCII_ALPHA | "_")+ }
