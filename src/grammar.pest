@@ -27,10 +27,11 @@ parenthesis = { expression }
 
 block = { "{" ~ (statement ~ ("," ~ statement)*)? ~ "}" }
 _if = { "if" ~ expression ~ expression ~ expression }
-literal = _{ number | string }
+literal = _{ number | string_literal }
 
 
-string = ${ "\"" ~ char* ~ "\"" }
+string_literal = _{ "\"" ~ string ~ "\"" }
+string = { char* }
 char = @{ (!"\"" ~ ANY) }
 
 number = ${ ASCII_DIGIT+ }

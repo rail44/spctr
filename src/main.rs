@@ -7,10 +7,17 @@ use std::cell::RefCell;
 use std::iter::IntoIterator;
 
 #[derive(Debug, Clone, PartialEq)]
+enum Boolean {
+    True,
+    False
+}
+
+#[derive(Debug, Clone, PartialEq)]
 enum Type {
     Number(f64),
     String(String),
-    Block(Source)
+    Block(Source),
+    Boolean(Boolean)
 }
 
 #[derive(PestParser)]
@@ -39,10 +46,12 @@ impl Env {
     }
 }
 
+type Expression = Additive;
+
 #[derive(Debug, Clone, PartialEq)]
 struct Source {
-    binds: HashMap<String, Additive>,
-    expressions: Vec<Additive>
+    binds: HashMap<String, Expression>,
+    expressions: Vec<Expression>
 }
 
 impl Source {
@@ -78,10 +87,10 @@ impl From<Pairs<'_, Rule>> for Source {
                 Rule::bind => {
                     let mut inner = pair.into_inner();
                     let name = inner.next().unwrap().as_str();
-                    let expression = Additive::from(inner.next().unwrap().into_inner());
+                    let expression = Expression::from(inner.next().unwrap().into_inner());
                     binds.insert(name.to_string(), expression);
                 }
-                Rule::additive => expressions.push(Additive::from(pair.into_inner())),
+                Rule::additive => expressions.push(Expression::from(pair.into_inner())),
                 _ => unreachable!("{:?}", pair)
             }
         }
@@ -274,9 +283,11 @@ impl From<Pair<'_, Rule>> for MultitiveRight {
 #[derive(Debug, Clone, PartialEq)]
 enum Primary {
     Number(f64),
-    Parenthesis(Box<Additive>),
+    String(String),
+    Parenthesis(Box<Expression>),
     Block(Box<Source>),
-    Evaluation(Evaluation)
+    Evaluation(Evaluation),
+    If(Box<Expression>, Box<Expression>, Box<Expression>)
 }
 
 impl Primary {
@@ -284,9 +295,17 @@ impl Primary {
         use Primary::*;
         match self {
             Number(f) => Type::Number(f),
+            String(s) => Type::String(s),
             Parenthesis(a) => a.eval(env),
             Block(s) => Type::Block(*s),
-            Evaluation(e) => e.eval(env)
+            Evaluation(e) => e.eval(env),
+            If(cond, cons, alt) => {
+                match cond.eval(env) {
+                    Type::Boolean(Boolean::True) => cons.eval(env),
+                    Type::Boolean(Boolean::False) => alt.eval(env),
+                    _ => panic!(),
+                }
+            }
         }
     }
 }
@@ -294,10 +313,19 @@ impl Primary {
 impl From<Pair<'_, Rule>> for Primary {
     fn from(pair: Pair<Rule>) -> Self {
         match pair.as_rule() {
-            Rule::parenthesis => Primary::Parenthesis(Box::new(Additive::from(pair.into_inner().next().unwrap().into_inner()))),
+            Rule::parenthesis => Primary::Parenthesis(Box::new(Expression::from(pair.into_inner().next().unwrap().into_inner()))),
             Rule::number => Primary::Number(pair.as_str().parse().unwrap()),
+            Rule::string => Primary::String(pair.as_str().to_string()),
             Rule::block => Primary::Block(Box::new(Source::from(pair.into_inner()))),
             Rule::evaluation => Primary::Evaluation(Evaluation::from(pair.into_inner())),
+            Rule::_if => {
+                let mut inner = pair.into_inner();
+                Primary::If(
+                    Box::new(Expression::from(inner.next().unwrap().into_inner())),
+                    Box::new(Expression::from(inner.next().unwrap().into_inner())),
+                    Box::new(Expression::from(inner.next().unwrap().into_inner()))
+                )
+            }
             _ => unreachable!("{:?}", pair)
         }
     }
@@ -354,7 +382,7 @@ impl From<Pairs<'_, Rule>> for Evaluation {
 
 #[derive(Debug, Clone, PartialEq)]
 enum EvaluationRight {
-    Call(Additive),
+    Call(Expression),
     Access(String),
 }
 
@@ -363,7 +391,7 @@ impl From<Pair<'_, Rule>> for EvaluationRight {
         use EvaluationRight::*;
         println!("{:?}\n", pair);
         match pair.as_rule() {
-            Rule::calling => Call(Additive::from(pair.into_inner().next().unwrap().into_inner())),
+            Rule::calling => Call(Expression::from(pair.into_inner().next().unwrap().into_inner())),
             Rule::identify => Access(pair.as_str().to_string()),
             _ => unreachable!("{:?}", pair)
         }
@@ -435,18 +463,19 @@ fn test_parsing_string() {
 fn test_parsing_source_1() {
     let ast = "i";
     Parser::parse(Rule::source, ast).unwrap();
+    Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
 
 #[test]
 fn test_parsing_source_2() {
     let ast = "1 + 2";
-    Parser::parse(Rule::source, ast).unwrap();
+    Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
 
 #[test]
 fn test_parsing_source_3() {
     let ast = "i: j";
-    Parser::parse(Rule::source, ast).unwrap();
+    Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
 
 #[test]
@@ -455,7 +484,7 @@ fn test_parsing_source_4() {
 j: 5,
 k: k + 1,
 i * (j + 3) + (j / i)";
-    Parser::parse(Rule::source, ast).unwrap();
+    Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
 
 #[test]
@@ -469,11 +498,11 @@ fn test_parsing_source_5() {
   fizz.concat(buzz)
 },
 range({min: 1, max: 100}).map({i: fizzbuzz})";
-    Parser::parse(Rule::source, ast).unwrap();
+    Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
 
 #[test]
 fn test_parsing_source_6() {
     let ast = "i(1)";
-    Parser::parse(Rule::source, ast).unwrap();
+    Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
