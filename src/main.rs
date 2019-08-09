@@ -348,22 +348,40 @@ fn test_bind_and_access() {
 }
 
 #[test]
-fn test_parsing() {
+fn test_parsing_identify() {
     Parser::parse(Rule::identify, "hoge").unwrap();
+}
 
+#[test]
+fn test_parsing_comparison() {
     Parser::parse(Rule::comparison, "1 = 0").unwrap();
+}
 
+#[test]
+fn test_parsing_additive() {
     Parser::parse(Rule::additive, "2").unwrap();
     Parser::parse(Rule::additive, "(2 + i) / j * 3 - k").unwrap();
+}
 
+#[test]
+fn test_parsing_bind() {
     Parser::parse(Rule::bind, "hoge: 2").unwrap();
     Parser::parse(Rule::bind, "hoge: 2 / 1").unwrap();
+}
 
+#[test]
+fn test_parsing_evaluation() {
     Parser::parse(Rule::evaluation, "hoge(1 * 2 + 3)").unwrap();
+}
 
+#[test]
+fn test_parsing_string() {
     Parser::parse(Rule::string, "\"hoge fuga\"").unwrap();
     Parser::parse(Rule::string, "\"\"").unwrap();
+}
 
+#[test]
+fn test_parsing_source() {
     let ast = "i: j";
     Parser::parse(Rule::source, ast).unwrap();
 
