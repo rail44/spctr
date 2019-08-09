@@ -5,6 +5,25 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter::IntoIterator;
+use std::fmt;
+use std::fmt::Debug;
+
+#[derive(Clone)]
+struct Native {
+    function: Rc<Fn(Type) -> Type>
+}
+
+impl std::cmp::PartialEq for Native {
+    fn eq(&self, _: &Native) -> bool {
+        false
+    }
+}
+
+impl std::fmt::Debug for Native {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "native")
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 enum Boolean {
@@ -17,7 +36,51 @@ enum Type {
     Number(f64),
     String(String),
     Block(Source),
-    Boolean(Boolean)
+    Boolean(Boolean),
+    Native(Native)
+}
+
+impl Type {
+    fn get_prop(self, env: &mut Env, name: &str) -> Type {
+        match self {
+            Type::Block(s) => {
+                let mut child = Env {
+                    binds: s.binds,
+                    evaluated: HashMap::new(),
+                    parent: Some(Rc::new(RefCell::new(env.clone())))
+                };
+                child.get_value(name)
+            }
+            Type::String(s) => {
+                match name {
+                    "concat" => {
+                        let s = s.clone();
+                        let function = move |src: Type| {
+                            if let Type::String(src) = src {
+                                return Type::String(format!("{}{}", s, src));
+                            }
+                            panic!();
+                        };
+                        Type::Native(Native {
+                            function: Rc::new(function),
+                        })
+                    }
+                    _ => panic!()
+                }
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn call(self, mut args: Vec<Type>) -> Type {
+        match self {
+            Type::Block(s) => s.call(args),
+            Type::Native(n) => {
+                (n.function)(args.pop().unwrap())
+            }
+            _ => unreachable!()
+        }
+    }
 }
 
 #[derive(PestParser)]
@@ -42,6 +105,7 @@ impl Env {
             self.evaluated.insert(name.to_string(), value.clone());
             return value;
         }
+        println!("{}", name);
         self.parent.as_ref().unwrap().borrow_mut().get_value(name)
     }
 }
@@ -345,20 +409,10 @@ impl Evaluation {
             use EvaluationRight::*;
             match right {
                 Access(name) => {
-                    if let Type::Block(s) = base {
-                        let mut env = Env {
-                            binds: s.binds,
-                            evaluated: HashMap::new(),
-                            parent: Some(Rc::new(RefCell::new(env.clone())))
-                        };
-                        base = env.get_value(&name);
-                    }
+                    base = base.get_prop(env, &name);
                 }
                 Call(arg) => {
-                    if let Type::Block(s) = base {
-                        let arg = arg.eval(env);
-                        base = s.call(vec![arg]);
-                    }
+                    base = base.call(vec![arg.eval(env)]);
                 }
             }
         }
@@ -410,6 +464,14 @@ hoge(1)
     let pairs = Parser::parse(Rule::source, ast).unwrap();
     let source = Source::from(pairs);
     assert!(source.eval() == Type::Number(2.0));
+}
+
+#[test]
+fn test_string_concat() {
+    let ast = "hoge: \"hoge\",
+hoge.concat(\"fuga\")";
+    let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
+    assert!(source.eval() == Type::String("hogefuga".to_string()));
 }
 
 #[test]
