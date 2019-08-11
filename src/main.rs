@@ -43,7 +43,8 @@ pub enum Type {
     Number(f64),
     String(String),
     Array(Vec<Type>),
-    Block(Source),
+    Map(HashMap<String, Expression>),
+    Function(Env, Vec<String>, Expression),
     Boolean(bool),
     Native(NativeType)
 }
@@ -51,9 +52,9 @@ pub enum Type {
 impl Type {
     fn get_prop(&self, env: &mut Env, name: &str) -> Type {
         match self {
-            Type::Block(s) => {
+            Type::Map(map) => {
                 let mut child = Env {
-                    binds: s.binds.clone(),
+                    binds: map.clone(),
                     evaluated: HashMap::new(),
                     parent: Some(Rc::new(RefCell::new(env.clone())))
                 };
@@ -78,7 +79,18 @@ impl Type {
 
     fn call(self, env: &mut Env, args: Vec<Type>) -> Type {
         match self {
-            Type::Block(s) => s.call(args),
+            Type::Function(inner_env, arg_names, expression) => {
+                let mut evaluated = HashMap::new();
+                for (v, n) in args.into_iter().zip(arg_names.iter()) {
+                    evaluated.insert(n.clone().into(), v);
+                }
+                let mut env = Env {
+                    binds: HashMap::new(),
+                    evaluated,
+                    parent: Some(Rc::new(RefCell::new(inner_env)))
+                };
+                expression.eval(&mut env)
+            },
             Type::Native(n) => n.0.call(env, args),
             _ => unreachable!()
         }
@@ -89,8 +101,8 @@ impl Type {
 #[grammar = "grammar.pest"]
 struct Parser;
 
-#[derive(Debug, Clone)]
-struct Env {
+#[derive(Debug, Clone, PartialEq)]
+pub struct Env {
     binds: HashMap<String, Expression>,
     evaluated: HashMap<String, Type>,
     parent: Option<Rc<RefCell<Env>>>
@@ -111,7 +123,49 @@ impl Env {
     }
 }
 
-type Expression = Comparison;
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expression {
+    Comparison(Comparison),
+    Function(Vec<String>, Box<Expression>),
+}
+
+impl Expression {
+    fn eval(self, env: &mut Env) -> Type {
+        use Expression::*;
+        match self {
+            Comparison(c) => c.eval(env),
+            Function(arg_names, expression) => Type::Function(env.clone(), arg_names, *expression),
+        }
+    }
+}
+
+impl Into<String> for Expression {
+    fn into(self) -> String {
+        if let Expression::Comparison(e) = self {
+            return e.into();
+        }
+        panic!("{:?}", self);
+    }
+}
+
+impl From<Pair<'_, Rule>> for Expression {
+    fn from(pair: Pair<Rule>) -> Self {
+        use Expression::*;
+        match pair.as_rule() {
+            Rule::comparison => Comparison(pair.into_inner().into()),
+            Rule::function => {
+                let mut v: Vec<Pair<Rule>> = pair.into_inner().collect();
+                let expression = v.pop().unwrap().into_inner().next().unwrap().into();
+                let mut arg_names = vec![];
+                for pair in v {
+                    arg_names.push(pair.as_str().to_string());
+                }
+                Function(arg_names, Box::new(expression))
+            }
+            _ => unreachable!("{:?}", pair)
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
@@ -120,28 +174,19 @@ pub struct Source {
 }
 
 impl Source {
-    fn eval(mut self) -> Type {
-        let mut env = Env {
-            binds: self.binds,
-            evaluated: [
-                ("Array".to_string(), array::Array.into())
-            ].iter().cloned().collect(),
-            parent: None,
-        };
-        self.expressions.pop().unwrap().eval(&mut env)
-    }
-
-    fn call(mut self, args: Vec<Type>) -> Type {
-        let mut evaluated = HashMap::new();
-        for (v, p) in args.into_iter().zip(self.expressions.iter()) {
-            evaluated.insert(p.clone().into(), v);
+    fn eval(mut self, env: Option<&mut Env>) -> Type {
+        if let Some(expression) = self.expressions.pop() {
+            let mut env = Env {
+                binds: self.binds,
+                evaluated: [
+                    ("Array".to_string(), array::Array.into())
+                ].iter().cloned().collect(),
+                parent: env.map(|e| Rc::new(RefCell::new(e.clone())))
+            };
+            return expression.eval(&mut env)
         }
-        let mut env = Env {
-            binds: self.binds,
-            evaluated,
-            parent: None,
-        };
-        self.expressions.pop().unwrap().eval(&mut env)
+
+        Type::Map(self.binds)
     }
 }
 
@@ -154,10 +199,10 @@ impl From<Pairs<'_, Rule>> for Source {
                 Rule::bind => {
                     let mut inner = pair.into_inner();
                     let name = inner.next().unwrap().as_str();
-                    let expression = Expression::from(inner.next().unwrap().into_inner());
+                    let expression = inner.next().unwrap().into_inner().next().unwrap().into();
                     binds.insert(name.to_string(), expression);
                 }
-                Rule::comparison => expressions.push(Expression::from(pair.into_inner())),
+                Rule::expression => expressions.push(Expression::from(pair.into_inner().next().unwrap())),
                 _ => unreachable!("{:?}", pair)
             }
         }
@@ -169,7 +214,7 @@ impl From<Pairs<'_, Rule>> for Source {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Comparison {
+pub struct Comparison {
     left: Additive,
     rights: Vec<ComparisonRight>
 }
@@ -273,7 +318,7 @@ impl Additive {
     }
 }
 
-impl Into<String> for Expression {
+impl Into<String> for Comparison {
     fn into(self) -> String {
         if let Primary::Evaluation(e) = self.left.left.left {
             return e.left
@@ -426,7 +471,7 @@ enum Primary {
     Parenthesis(Box<Expression>),
     Block(Box<Source>),
     Evaluation(Evaluation),
-    If(Box<Expression>, Box<Expression>, Box<Expression>)
+    If(Box<Comparison>, Box<Expression>, Box<Expression>)
 }
 
 impl Primary {
@@ -436,7 +481,7 @@ impl Primary {
             Number(f) => Type::Number(f),
             String(s) => Type::String(s),
             Parenthesis(a) => a.eval(env),
-            Block(s) => Type::Block(*s),
+            Block(s) => s.eval(Some(env)),
             Evaluation(e) => e.eval(env),
             If(cond, cons, alt) => {
                 match cond.eval(env) {
@@ -452,7 +497,7 @@ impl Primary {
 impl From<Pair<'_, Rule>> for Primary {
     fn from(pair: Pair<Rule>) -> Self {
         match pair.as_rule() {
-            Rule::parenthesis => Primary::Parenthesis(Box::new(Expression::from(pair.into_inner().next().unwrap().into_inner()))),
+            Rule::parenthesis => Primary::Parenthesis(Box::new(pair.into_inner().next().unwrap().into_inner().next().unwrap().into())),
             Rule::number => Primary::Number(pair.as_str().parse().unwrap()),
             Rule::string => Primary::String(pair.as_str().to_string()),
             Rule::block => Primary::Block(Box::new(Source::from(pair.into_inner()))),
@@ -460,9 +505,9 @@ impl From<Pair<'_, Rule>> for Primary {
             Rule::_if => {
                 let mut inner = pair.into_inner();
                 Primary::If(
-                    Box::new(Expression::from(inner.next().unwrap().into_inner())),
-                    Box::new(Expression::from(inner.next().unwrap().into_inner())),
-                    Box::new(Expression::from(inner.next().unwrap().into_inner()))
+                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into_inner().into()),
+                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into()),
+                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into())
                 )
             }
             _ => unreachable!("{:?}", pair)
@@ -519,7 +564,7 @@ impl From<Pair<'_, Rule>> for EvaluationRight {
     fn from(pair: Pair<Rule>) -> Self {
         use EvaluationRight::*;
         match pair.as_rule() {
-            Rule::calling => Call(Expression::from(pair.into_inner().next().unwrap().into_inner())),
+            Rule::calling => Call(pair.into_inner().next().unwrap().into_inner().next().unwrap().into()),
             Rule::identify => Access(pair.as_str().to_string()),
             _ => unreachable!("{:?}", pair)
         }
@@ -528,8 +573,7 @@ impl From<Pair<'_, Rule>> for EvaluationRight {
 
 #[test]
 fn test_call() {
-    let ast = "hoge: {
-  fuga,
+    let ast = "hoge: (fuga) => {
   fuga + 1
 },
 
@@ -537,7 +581,7 @@ hoge(1)
 ";
     let pairs = Parser::parse(Rule::source, ast).unwrap();
     let source = Source::from(pairs);
-    assert!(source.eval() == Type::Number(2.0));
+    assert!(source.eval(None) == Type::Number(2.0));
 }
 
 #[test]
@@ -546,16 +590,14 @@ fn test_range() {
 Array.range({start: 1, end: 100})";
 
     let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
-    println!("{:?}", source.clone().eval());
-    assert!(source.eval() == Type::String("hogefuga".to_string()));
+    println!("{:?}", source.clone().eval(None));
+    assert!(source.eval(None) == Type::String("hogefuga".to_string()));
 }
 
 #[test]
 fn test_fizzbuzz() {
     let ast =
-"fizzbuzz: {
-  i,
-
+"fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
   is_buzz: i % 5 = 0,
   fizz: if is_fizz \"fizz\" \"\",
@@ -566,8 +608,8 @@ fn test_fizzbuzz() {
 Array.range({start: 1, end: 100}).map(fizzbuzz)";
 
     let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
-    println!("{:?}", source.clone().eval());
-    assert!(source.eval() == Type::String("hogefuga".to_string()));
+    println!("{:?}", source.clone().eval(None));
+    assert!(source.eval(None) == Type::String("hogefuga".to_string()));
 }
 
 #[test]
@@ -575,7 +617,7 @@ fn test_string_concat() {
     let ast = "hoge: \"hoge\",
 hoge.concat(\"fuga\")";
     let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
-    assert!(source.eval() == Type::String("hogefuga".to_string()));
+    assert!(source.eval(None) == Type::String("hogefuga".to_string()));
 }
 
 #[test]
@@ -589,7 +631,7 @@ fn test_bind_and_access() {
 hoge.baz
 ";
     let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
-    assert!(source.eval() == Type::Number(35.0));
+    assert!(source.eval(None) == Type::Number(35.0));
 }
 
 #[test]
@@ -655,9 +697,7 @@ i * (j + 3) + (j / i)";
 
 #[test]
 fn test_parsing_source_5() {
-    let ast = "fizzbuzz: {
-  i,
-
+    let ast = "fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
   is_buzz: i % 5 = 0,
   fizz: if is_fizz \"fizz\" \"\",

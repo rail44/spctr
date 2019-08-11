@@ -3,7 +3,8 @@ delimiter = _{ "," }
 source = _{ SOI ~ (statement ~ (delimiter ~ statement)*)? ~ &EOI }
 
 statement = _{ bind | expression }
-expression = _{ comparison }
+expression = { function | comparison }
+function = { "(" ~ identify ~ ("," ~ identify)* ~ ")" ~ "=>" ~ expression }
 
 bind = { identify ~ ":" ~ expression }
 
