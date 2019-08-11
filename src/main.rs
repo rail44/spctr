@@ -9,9 +9,10 @@ use std::fmt::Debug;
 use std::any::Any;
 
 mod string;
+mod array;
 
 #[derive(Debug, Clone)]
-struct NativeType(Rc<dyn Native>);
+pub struct NativeType(Rc<dyn Native>);
 
 impl NativeType {
     fn new<N: Native>(v: N) -> Self {
@@ -20,9 +21,15 @@ impl NativeType {
 }
 
 trait Native: 'static + Debug {
-    fn get_prop(self, _env: &mut Env, _name: &str) -> Type;
-    fn call(&self, args: Vec<Type>) -> Type;
+    fn get_prop(&self, env: &mut Env, name: &str) -> Type;
+    fn call(&self, env: &mut Env, args: Vec<Type>) -> Type;
     fn comparator(&self) -> &str;
+}
+
+impl<N: Native> From<N> for Type {
+    fn from(n: N) -> Self {
+        Type::Native(NativeType::new(n))
+    }
 }
 
 impl PartialEq for NativeType {
@@ -32,7 +39,7 @@ impl PartialEq for NativeType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Type {
+pub enum Type {
     Number(f64),
     String(String),
     Array(Vec<Type>),
@@ -42,32 +49,37 @@ enum Type {
 }
 
 impl Type {
-    fn get_prop(self, env: &mut Env, name: &str) -> Type {
+    fn get_prop(&self, env: &mut Env, name: &str) -> Type {
         match self {
             Type::Block(s) => {
                 let mut child = Env {
-                    binds: s.binds,
+                    binds: s.binds.clone(),
                     evaluated: HashMap::new(),
                     parent: Some(Rc::new(RefCell::new(env.clone())))
                 };
                 child.get_value(name)
             }
-            Type::String(s) => {
+            Type::Array(v) => {
                 match name {
-                    "concat" => Type::Native(NativeType::new(string::Concat::new(s.clone()))),
+                    "map" => array::Map::new(v.clone()).into(),
                     _ => panic!()
                 }
             }
+            Type::String(s) => {
+                match name {
+                    "concat" => string::Concat::new(s.clone()).into(),
+                    _ => panic!()
+                }
+            }
+            Type::Native(n) => n.0.get_prop(env, name),
             _ => unreachable!()
         }
     }
 
-    fn call(self, args: Vec<Type>) -> Type {
+    fn call(self, env: &mut Env, args: Vec<Type>) -> Type {
         match self {
             Type::Block(s) => s.call(args),
-            Type::Native(n) => {
-                n.0.call(args)
-            }
+            Type::Native(n) => n.0.call(env, args),
             _ => unreachable!()
         }
     }
@@ -102,7 +114,7 @@ impl Env {
 type Expression = Comparison;
 
 #[derive(Debug, Clone, PartialEq)]
-struct Source {
+pub struct Source {
     binds: HashMap<String, Expression>,
     expressions: Vec<Expression>
 }
@@ -111,7 +123,9 @@ impl Source {
     fn eval(mut self) -> Type {
         let mut env = Env {
             binds: self.binds,
-            evaluated: HashMap::new(),
+            evaluated: [
+                ("Array".to_string(), array::Array.into())
+            ].iter().cloned().collect(),
             parent: None,
         };
         self.expressions.pop().unwrap().eval(&mut env)
@@ -473,7 +487,7 @@ impl Evaluation {
                     base = base.get_prop(env, &name);
                 }
                 Call(arg) => {
-                    base = base.call(vec![arg.eval(env)]);
+                    base = base.call(&mut env.clone(), vec![arg.eval(env)]);
                 }
             }
         }
@@ -527,7 +541,17 @@ hoge(1)
 }
 
 #[test]
-fn test_fizzbaz() {
+fn test_range() {
+    let ast = "
+Array.range({start: 1, end: 100})";
+
+    let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
+    println!("{:?}", source.clone().eval());
+    assert!(source.eval() == Type::String("hogefuga".to_string()));
+}
+
+#[test]
+fn test_fizzbuzz() {
     let ast =
 "fizzbuzz: {
   i,
@@ -539,9 +563,10 @@ fn test_fizzbaz() {
 
   fizz.concat(buzz)
 },
-range({min: 1, max: 100}).map(fizzbuzz)";
+Array.range({start: 1, end: 100}).map(fizzbuzz)";
 
     let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
+    println!("{:?}", source.clone().eval());
     assert!(source.eval() == Type::String("hogefuga".to_string()));
 }
 
@@ -640,7 +665,7 @@ fn test_parsing_source_5() {
 
   fizz.concat(buzz)
 },
-range({min: 1, max: 100}).map(fizzbuzz)";
+Array.range({start: 1, end: 100}).map(fizzbuzz)";
     Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
 
