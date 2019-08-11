@@ -5,39 +5,40 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter::IntoIterator;
-use std::fmt;
 use std::fmt::Debug;
+use std::any::Any;
 
-#[derive(Clone)]
-struct Native {
-    function: Rc<Fn(Type) -> Type>
-}
+mod string;
 
-impl std::cmp::PartialEq for Native {
-    fn eq(&self, _: &Native) -> bool {
-        false
+#[derive(Debug, Clone)]
+struct NativeType(Rc<dyn Native>);
+
+impl NativeType {
+    fn new<N: Native>(v: N) -> Self {
+        NativeType(Rc::new(v))
     }
 }
 
-impl std::fmt::Debug for Native {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "native")
-    }
+trait Native: 'static + Debug {
+    fn get_prop(self, _env: &mut Env, _name: &str) -> Type;
+    fn call(&self, args: Vec<Type>) -> Type;
+    fn comparator(&self) -> &str;
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum Boolean {
-    True,
-    False
+impl PartialEq for NativeType {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.type_id() == other.0.type_id() && self.0.comparator() == other.0.comparator()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 enum Type {
     Number(f64),
     String(String),
+    Array(Vec<Type>),
     Block(Source),
-    Boolean(Boolean),
-    Native(Native)
+    Boolean(bool),
+    Native(NativeType)
 }
 
 impl Type {
@@ -53,18 +54,7 @@ impl Type {
             }
             Type::String(s) => {
                 match name {
-                    "concat" => {
-                        let s = s.clone();
-                        let function = move |src: Type| {
-                            if let Type::String(src) = src {
-                                return Type::String(format!("{}{}", s, src));
-                            }
-                            panic!();
-                        };
-                        Type::Native(Native {
-                            function: Rc::new(function),
-                        })
-                    }
+                    "concat" => Type::Native(NativeType::new(string::Concat::new(s.clone()))),
                     _ => panic!()
                 }
             }
@@ -72,11 +62,11 @@ impl Type {
         }
     }
 
-    fn call(self, mut args: Vec<Type>) -> Type {
+    fn call(self, args: Vec<Type>) -> Type {
         match self {
             Type::Block(s) => s.call(args),
             Type::Native(n) => {
-                (n.function)(args.pop().unwrap())
+                n.0.call(args)
             }
             _ => unreachable!()
         }
@@ -89,7 +79,7 @@ struct Parser;
 
 #[derive(Debug, Clone)]
 struct Env {
-    binds: HashMap<String, Additive>,
+    binds: HashMap<String, Expression>,
     evaluated: HashMap<String, Type>,
     parent: Option<Rc<RefCell<Env>>>
 }
@@ -105,12 +95,11 @@ impl Env {
             self.evaluated.insert(name.to_string(), value.clone());
             return value;
         }
-        println!("{}", name);
         self.parent.as_ref().unwrap().borrow_mut().get_value(name)
     }
 }
 
-type Expression = Additive;
+type Expression = Comparison;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Source {
@@ -154,13 +143,86 @@ impl From<Pairs<'_, Rule>> for Source {
                     let expression = Expression::from(inner.next().unwrap().into_inner());
                     binds.insert(name.to_string(), expression);
                 }
-                Rule::additive => expressions.push(Expression::from(pair.into_inner())),
+                Rule::comparison => expressions.push(Expression::from(pair.into_inner())),
                 _ => unreachable!("{:?}", pair)
             }
         }
         Source {
             binds,
             expressions
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Comparison {
+    left: Additive,
+    rights: Vec<ComparisonRight>
+}
+
+impl Comparison {
+    fn eval(self, env: &mut Env) -> Type {
+        let mut base = self.left.eval(env);
+
+        for right in self.rights {
+            use ComparisonKind::*;
+            let value = right.value.eval(env);
+            match right.kind {
+                Equal => base = Type::Boolean(base == value),
+                NotEqual => base = Type::Boolean(base != value),
+            }
+        }
+        base
+    }
+}
+
+impl From<Pairs<'_, Rule>> for Comparison {
+    fn from(mut pairs: Pairs<Rule>) -> Self {
+        let left = Additive::from(pairs.next().unwrap().into_inner());
+        let mut rights = vec![];
+
+        for pair in pairs {
+            rights.push(ComparisonRight::from(pair));
+        }
+
+        Self {
+            left,
+            rights
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ComparisonKind {
+    Equal,
+    NotEqual
+}
+
+impl From<&Pair<'_, Rule>> for ComparisonKind {
+    fn from(pair: &Pair<Rule>) -> Self {
+        use ComparisonKind::*;
+        match pair.as_rule() {
+            Rule::equal => Equal,
+            Rule::not_equal => NotEqual,
+            _ => unreachable!("{:?}", pair)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ComparisonRight {
+    kind: ComparisonKind,
+    value: Additive
+}
+
+impl From<Pair<'_, Rule>> for ComparisonRight {
+    fn from(pair: Pair<'_, Rule>) -> Self {
+        let kind = ComparisonKind::from(&pair);
+        let value = Additive::from(pair.into_inner().next().unwrap().into_inner());
+
+        Self {
+            kind,
+            value
         }
     }
 }
@@ -197,15 +259,14 @@ impl Additive {
     }
 }
 
-impl Into<String> for Additive {
+impl Into<String> for Expression {
     fn into(self) -> String {
-        if let Primary::Evaluation(e) = self.left.left {
+        if let Primary::Evaluation(e) = self.left.left.left {
             return e.left
         }
         panic!("{:?}", self);
     }
 }
-
 
 impl From<Pairs<'_, Rule>> for Additive {
     fn from(mut pairs: Pairs<Rule>) -> Self {
@@ -365,8 +426,8 @@ impl Primary {
             Evaluation(e) => e.eval(env),
             If(cond, cons, alt) => {
                 match cond.eval(env) {
-                    Type::Boolean(Boolean::True) => cons.eval(env),
-                    Type::Boolean(Boolean::False) => alt.eval(env),
+                    Type::Boolean(true) => cons.eval(env),
+                    Type::Boolean(false) => alt.eval(env),
                     _ => panic!(),
                 }
             }
@@ -443,7 +504,6 @@ enum EvaluationRight {
 impl From<Pair<'_, Rule>> for EvaluationRight {
     fn from(pair: Pair<Rule>) -> Self {
         use EvaluationRight::*;
-        println!("{:?}\n", pair);
         match pair.as_rule() {
             Rule::calling => Call(Expression::from(pair.into_inner().next().unwrap().into_inner())),
             Rule::identify => Access(pair.as_str().to_string()),
@@ -464,6 +524,25 @@ hoge(1)
     let pairs = Parser::parse(Rule::source, ast).unwrap();
     let source = Source::from(pairs);
     assert!(source.eval() == Type::Number(2.0));
+}
+
+#[test]
+fn test_fizzbaz() {
+    let ast =
+"fizzbuzz: {
+  i,
+
+  is_fizz: i % 3 = 0,
+  is_buzz: i % 5 = 0,
+  fizz: if is_fizz \"fizz\" \"\",
+  buzz: if is_buzz \"buzz\" \"\",
+
+  fizz.concat(buzz)
+},
+range({min: 1, max: 100}).map(fizzbuzz)";
+
+    let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
+    assert!(source.eval() == Type::String("hogefuga".to_string()));
 }
 
 #[test]
@@ -552,6 +631,8 @@ i * (j + 3) + (j / i)";
 #[test]
 fn test_parsing_source_5() {
     let ast = "fizzbuzz: {
+  i,
+
   is_fizz: i % 3 = 0,
   is_buzz: i % 5 = 0,
   fizz: if is_fizz \"fizz\" \"\",
@@ -559,7 +640,7 @@ fn test_parsing_source_5() {
 
   fizz.concat(buzz)
 },
-range({min: 1, max: 100}).map({i: fizzbuzz})";
+range({min: 1, max: 100}).map(fizzbuzz)";
     Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
 
