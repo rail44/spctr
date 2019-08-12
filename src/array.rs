@@ -1,4 +1,4 @@
-use crate::{Env, Type, Native};
+use crate::{Env, Native, Type};
 use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,7 +12,7 @@ impl Native for Array {
     fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
         match name {
             "range" => Range.into(),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -35,7 +35,9 @@ impl Native for Range {
 
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
         let arg = args.pop().unwrap();
-        if let (Type::Number(start), Type::Number(end)) = (arg.get_prop(env, "start"), arg.get_prop(env, "end")) {
+        if let (Type::Number(start), Type::Number(end)) =
+            (arg.get_prop(env, "start"), arg.get_prop(env, "end"))
+        {
             let start = start as i32;
             let end = end as i32;
             return Type::Array((start..end).map(|i| Type::Number(i.into())).collect());
@@ -64,6 +66,11 @@ impl Native for Map {
 
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
         let arg = args.pop().unwrap();
-        Type::Array(self.0.iter().map(|v| arg.clone().call(env, vec![v.clone()])).collect())
+        Type::Array(
+            self.0
+                .iter()
+                .map(|v| arg.clone().call(env, vec![v.clone()]))
+                .collect(),
+        )
     }
 }

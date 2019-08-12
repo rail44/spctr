@@ -1,8 +1,8 @@
-use pest::Parser as PestParser;
 use pest::iterators::{Pair, Pairs};
+use pest::Parser as PestParser;
 use pest_derive::Parser as PestParser;
-use std::str::FromStr;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 #[derive(PestParser)]
 #[grammar = "grammar.pest"]
@@ -37,7 +37,7 @@ impl From<Pair<'_, Rule>> for Expression {
                 }
                 Function(arg_names, Box::new(expression))
             }
-            _ => unreachable!("{:?}", pair)
+            _ => unreachable!("{:?}", pair),
         }
     }
 }
@@ -45,7 +45,7 @@ impl From<Pair<'_, Rule>> for Expression {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
     pub binds: HashMap<String, Expression>,
-    pub expressions: Vec<Expression>
+    pub expressions: Vec<Expression>,
 }
 
 impl FromStr for Source {
@@ -67,21 +67,20 @@ impl From<Pairs<'_, Rule>> for Source {
                     let expression = inner.next().unwrap().into_inner().next().unwrap().into();
                     binds.insert(name.to_string(), expression);
                 }
-                Rule::expression => expressions.push(Expression::from(pair.into_inner().next().unwrap())),
-                _ => unreachable!("{:?}", pair)
+                Rule::expression => {
+                    expressions.push(Expression::from(pair.into_inner().next().unwrap()))
+                }
+                _ => unreachable!("{:?}", pair),
             }
         }
-        Source {
-            binds,
-            expressions
-        }
+        Source { binds, expressions }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Comparison {
     pub left: Additive,
-    pub rights: Vec<ComparisonRight>
+    pub rights: Vec<ComparisonRight>,
 }
 
 impl From<Pairs<'_, Rule>> for Comparison {
@@ -93,17 +92,14 @@ impl From<Pairs<'_, Rule>> for Comparison {
             rights.push(ComparisonRight::from(pair));
         }
 
-        Self {
-            left,
-            rights
-        }
+        Self { left, rights }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComparisonKind {
     Equal,
-    NotEqual
+    NotEqual,
 }
 
 impl From<&Pair<'_, Rule>> for ComparisonKind {
@@ -112,7 +108,7 @@ impl From<&Pair<'_, Rule>> for ComparisonKind {
         match pair.as_rule() {
             Rule::equal => Equal,
             Rule::not_equal => NotEqual,
-            _ => unreachable!("{:?}", pair)
+            _ => unreachable!("{:?}", pair),
         }
     }
 }
@@ -120,7 +116,7 @@ impl From<&Pair<'_, Rule>> for ComparisonKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComparisonRight {
     pub kind: ComparisonKind,
-    pub value: Additive
+    pub value: Additive,
 }
 
 impl From<Pair<'_, Rule>> for ComparisonRight {
@@ -128,23 +124,20 @@ impl From<Pair<'_, Rule>> for ComparisonRight {
         let kind = ComparisonKind::from(&pair);
         let value = Additive::from(pair.into_inner().next().unwrap().into_inner());
 
-        Self {
-            kind,
-            value
-        }
+        Self { kind, value }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Additive {
     pub left: Multitive,
-    pub rights: Vec<AdditiveRight>
+    pub rights: Vec<AdditiveRight>,
 }
 
 impl Into<String> for Comparison {
     fn into(self) -> String {
         if let Primary::Evaluation(e) = self.left.left.left {
-            return e.left
+            return e.left;
         }
         panic!("{:?}", self);
     }
@@ -159,17 +152,14 @@ impl From<Pairs<'_, Rule>> for Additive {
             rights.push(AdditiveRight::from(pair));
         }
 
-        Self {
-            left,
-            rights
-        }
+        Self { left, rights }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AdditiveKind {
     Add,
-    Sub
+    Sub,
 }
 
 impl From<&Pair<'_, Rule>> for AdditiveKind {
@@ -178,7 +168,7 @@ impl From<&Pair<'_, Rule>> for AdditiveKind {
         match pair.as_rule() {
             Rule::add => Add,
             Rule::sub => Sub,
-            _ => unreachable!("{:?}", pair)
+            _ => unreachable!("{:?}", pair),
         }
     }
 }
@@ -186,7 +176,7 @@ impl From<&Pair<'_, Rule>> for AdditiveKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AdditiveRight {
     pub kind: AdditiveKind,
-    pub value: Multitive
+    pub value: Multitive,
 }
 
 impl From<Pair<'_, Rule>> for AdditiveRight {
@@ -194,17 +184,14 @@ impl From<Pair<'_, Rule>> for AdditiveRight {
         let kind = AdditiveKind::from(&pair);
         let value = Multitive::from(pair.into_inner().next().unwrap().into_inner());
 
-        Self {
-            kind,
-            value
-        }
+        Self { kind, value }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Multitive {
     pub left: Primary,
-    pub rights: Vec<MultitiveRight>
+    pub rights: Vec<MultitiveRight>,
 }
 
 impl From<Pairs<'_, Rule>> for Multitive {
@@ -216,10 +203,7 @@ impl From<Pairs<'_, Rule>> for Multitive {
             rights.push(MultitiveRight::from(pair));
         }
 
-        Self {
-            left,
-            rights
-        }
+        Self { left, rights }
     }
 }
 
@@ -227,7 +211,7 @@ impl From<Pairs<'_, Rule>> for Multitive {
 pub enum MultitiveKind {
     Mul,
     Div,
-    Surplus
+    Surplus,
 }
 
 impl From<&Pair<'_, Rule>> for MultitiveKind {
@@ -237,7 +221,7 @@ impl From<&Pair<'_, Rule>> for MultitiveKind {
             Rule::mul => Mul,
             Rule::div => Div,
             Rule::surplus => Surplus,
-            _ => unreachable!("{:?}", pair)
+            _ => unreachable!("{:?}", pair),
         }
     }
 }
@@ -245,7 +229,7 @@ impl From<&Pair<'_, Rule>> for MultitiveKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MultitiveRight {
     pub kind: MultitiveKind,
-    pub value: Primary
+    pub value: Primary,
 }
 
 impl From<Pair<'_, Rule>> for MultitiveRight {
@@ -253,10 +237,7 @@ impl From<Pair<'_, Rule>> for MultitiveRight {
         let kind = MultitiveKind::from(&pair);
         let value = Primary::from(pair.into_inner().next().unwrap());
 
-        Self {
-            kind,
-            value
-        }
+        Self { kind, value }
     }
 }
 
@@ -267,13 +248,21 @@ pub enum Primary {
     Parenthesis(Box<Expression>),
     Block(Box<Source>),
     Evaluation(Evaluation),
-    If(Box<Comparison>, Box<Expression>, Box<Expression>)
+    If(Box<Comparison>, Box<Expression>, Box<Expression>),
 }
 
 impl From<Pair<'_, Rule>> for Primary {
     fn from(pair: Pair<Rule>) -> Self {
         match pair.as_rule() {
-            Rule::parenthesis => Primary::Parenthesis(Box::new(pair.into_inner().next().unwrap().into_inner().next().unwrap().into())),
+            Rule::parenthesis => Primary::Parenthesis(Box::new(
+                pair.into_inner()
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .next()
+                    .unwrap()
+                    .into(),
+            )),
             Rule::number => Primary::Number(pair.as_str().parse().unwrap()),
             Rule::string => Primary::String(pair.as_str().to_string()),
             Rule::block => Primary::Block(Box::new(Source::from(pair.into_inner()))),
@@ -281,12 +270,21 @@ impl From<Pair<'_, Rule>> for Primary {
             Rule::_if => {
                 let mut inner = pair.into_inner();
                 Primary::If(
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into_inner().into()),
+                    Box::new(
+                        inner
+                            .next()
+                            .unwrap()
+                            .into_inner()
+                            .next()
+                            .unwrap()
+                            .into_inner()
+                            .into(),
+                    ),
                     Box::new(inner.next().unwrap().into_inner().next().unwrap().into()),
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into())
+                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into()),
                 )
             }
-            _ => unreachable!("{:?}", pair)
+            _ => unreachable!("{:?}", pair),
         }
     }
 }
@@ -304,10 +302,7 @@ impl From<Pairs<'_, Rule>> for Evaluation {
         for pair in pairs {
             rights.push(EvaluationRight::from(pair));
         }
-        Evaluation {
-            left,
-            rights
-        }
+        Evaluation { left, rights }
     }
 }
 
@@ -321,9 +316,17 @@ impl From<Pair<'_, Rule>> for EvaluationRight {
     fn from(pair: Pair<Rule>) -> Self {
         use EvaluationRight::*;
         match pair.as_rule() {
-            Rule::calling => Call(pair.into_inner().next().unwrap().into_inner().next().unwrap().into()),
+            Rule::calling => Call(
+                pair.into_inner()
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .next()
+                    .unwrap()
+                    .into(),
+            ),
             Rule::identify => Access(pair.as_str().to_string()),
-            _ => unreachable!("{:?}", pair)
+            _ => unreachable!("{:?}", pair),
         }
     }
 }

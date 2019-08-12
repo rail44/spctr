@@ -1,17 +1,18 @@
-use std::rc::Rc;
+use crate::{array, string, token, Env, Type};
 use std::cell::RefCell;
-use crate::{Env, Type, token, array, string};
+use std::rc::Rc;
 
-pub fn eval_source (mut source: token::Source, env: Option<&mut Env>) -> Type {
+pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {
         let mut env = Env {
             binds: source.binds,
-            evaluated: [
-                ("Array".to_string(), array::Array.into())
-            ].iter().cloned().collect(),
-            parent: env.map(|e| Rc::new(RefCell::new(e.clone())))
+            evaluated: [("Array".to_string(), array::Array.into())]
+                .iter()
+                .cloned()
+                .collect(),
+            parent: env.map(|e| Rc::new(RefCell::new(e.clone()))),
         };
-        return expression.eval(&mut env)
+        return expression.eval(&mut env);
     }
 
     Type::Map(source.binds)
@@ -22,7 +23,6 @@ impl Evaluable for token::Source {
         eval_source(self, Some(env))
     }
 }
-
 
 pub trait Evaluable {
     fn eval(self, env: &mut Env) -> Type;
@@ -59,7 +59,7 @@ impl Evaluable for token::Additive {
         let left = self.left.eval(env);
 
         if self.rights.len() == 0 {
-            return  left;
+            return left;
         }
 
         if let Type::Number(mut base) = left {
@@ -85,7 +85,7 @@ impl Evaluable for token::Multitive {
         let left = self.left.clone().eval(env);
 
         if self.rights.len() == 0 {
-            return  left;
+            return left;
         }
 
         if let Type::Number(mut base) = left {
@@ -135,13 +135,11 @@ impl Evaluable for token::Primary {
             Parenthesis(a) => a.eval(env),
             Block(s) => s.eval(env),
             Evaluation(e) => e.eval(env),
-            If(cond, cons, alt) => {
-                match cond.eval(env) {
-                    Type::Boolean(true) => cons.eval(env),
-                    Type::Boolean(false) => alt.eval(env),
-                    _ => panic!(),
-                }
-            }
+            If(cond, cons, alt) => match cond.eval(env) {
+                Type::Boolean(true) => cons.eval(env),
+                Type::Boolean(false) => alt.eval(env),
+                _ => panic!(),
+            },
         }
     }
 }

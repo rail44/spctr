@@ -1,4 +1,4 @@
-use crate::{Env, Type, Native};
+use crate::{Env, Native, Type};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Concat(String);
@@ -20,7 +20,7 @@ impl Native for Concat {
 
     fn call(&self, _env: &mut Env, mut args: Vec<Type>) -> Type {
         if let Type::String(s) = args.pop().unwrap() {
-            return Type::String(format!("{}{}", self.0, s))
+            return Type::String(format!("{}{}", self.0, s));
         }
         panic!();
     }

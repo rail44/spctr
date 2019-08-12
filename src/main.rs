@@ -1,17 +1,17 @@
-mod string;
 mod array;
-mod token;
 mod eval;
+mod string;
+mod token;
 
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::iter::IntoIterator;
-use std::fmt::Debug;
+use eval::{eval_source, Evaluable};
 use std::any::Any;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::iter::IntoIterator;
+use std::rc::Rc;
 use std::str::FromStr;
 use token::Source;
-use eval::{eval_source, Evaluable};
 
 #[derive(Debug, Clone)]
 pub struct NativeType(Rc<dyn Native>);
@@ -48,7 +48,7 @@ pub enum Type {
     Map(HashMap<String, token::Expression>),
     Function(Env, Vec<String>, token::Expression),
     Boolean(bool),
-    Native(NativeType)
+    Native(NativeType),
 }
 
 impl Type {
@@ -58,24 +58,20 @@ impl Type {
                 let mut child = Env {
                     binds: map.clone(),
                     evaluated: HashMap::new(),
-                    parent: Some(Rc::new(RefCell::new(env.clone())))
+                    parent: Some(Rc::new(RefCell::new(env.clone()))),
                 };
                 child.get_value(name)
             }
-            Type::Array(v) => {
-                match name {
-                    "map" => array::Map::new(v.clone()).into(),
-                    _ => panic!()
-                }
-            }
-            Type::String(s) => {
-                match name {
-                    "concat" => string::Concat::new(s.clone()).into(),
-                    _ => panic!()
-                }
-            }
+            Type::Array(v) => match name {
+                "map" => array::Map::new(v.clone()).into(),
+                _ => panic!(),
+            },
+            Type::String(s) => match name {
+                "concat" => string::Concat::new(s.clone()).into(),
+                _ => panic!(),
+            },
             Type::Native(n) => n.0.get_prop(env, name),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -89,12 +85,12 @@ impl Type {
                 let mut env = Env {
                     binds: HashMap::new(),
                     evaluated,
-                    parent: Some(Rc::new(RefCell::new(inner_env)))
+                    parent: Some(Rc::new(RefCell::new(inner_env))),
                 };
                 expression.eval(&mut env)
-            },
+            }
             Type::Native(n) => n.0.call(env, args),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -103,7 +99,7 @@ impl Type {
 pub struct Env {
     binds: HashMap<String, token::Expression>,
     evaluated: HashMap<String, Type>,
-    parent: Option<Rc<RefCell<Env>>>
+    parent: Option<Rc<RefCell<Env>>>,
 }
 
 impl Env {
@@ -143,8 +139,7 @@ Array.range({start: 1, end: 100})";
 
 #[test]
 fn test_fizzbuzz() {
-    let ast =
-"fizzbuzz: (i) => {
+    let ast = "fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
   is_buzz: i % 5 = 0,
   fizz: if is_fizz \"fizz\" \"\",
