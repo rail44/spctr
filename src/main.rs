@@ -22,7 +22,7 @@ impl NativeType {
     }
 }
 
-trait Native: 'static + Debug {
+pub trait Native: 'static + Debug {
     fn get_prop(&self, env: &mut Env, name: &str) -> Type;
     fn call(&self, env: &mut Env, args: Vec<Type>) -> Type;
     fn comparator(&self) -> &str;
@@ -46,7 +46,7 @@ pub enum Type {
     String(String),
     Array(Vec<Type>),
     Map(HashMap<String, token::Expression>),
-    Function(Env, Vec<String>, token::Expression),
+    Function(Env, Vec<String>, Box<token::Expression>),
     Boolean(bool),
     Native(NativeType),
 }
@@ -80,7 +80,7 @@ impl Type {
             Type::Function(inner_env, arg_names, expression) => {
                 let mut evaluated = HashMap::new();
                 for (v, n) in args.into_iter().zip(arg_names.iter()) {
-                    evaluated.insert(n.clone().into(), v);
+                    evaluated.insert(n.clone(), v);
                 }
                 let mut env = Env {
                     binds: HashMap::new(),
@@ -116,29 +116,14 @@ impl Env {
         self.parent.as_ref().unwrap().borrow_mut().get_value(name)
     }
 }
-#[test]
-fn test_call() {
-    let ast = "hoge: (fuga) => {
-  fuga + 1
-},
 
-hoge(1)
-";
-    let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, None) == Type::Number(2.0));
-}
-
-#[test]
-fn test_range() {
+fn main() {
     let ast = "
 Array.range({start: 1, end: 100})";
 
     let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, None) == Type::String("hogefuga".to_string()));
-}
+    println!("{:?}", eval_source(source, None));
 
-#[test]
-fn test_fizzbuzz() {
     let ast = "fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
   is_buzz: i % 5 = 0,
@@ -150,7 +135,19 @@ fn test_fizzbuzz() {
 Array.range({start: 1, end: 100}).map(fizzbuzz)";
 
     let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, None) == Type::String("hogefuga".to_string()));
+    println!("{:?}", eval_source(source, None));
+}
+
+#[test]
+fn test_call() {
+    let ast = "hoge: (fuga) => {
+  fuga + 1
+},
+
+hoge(1)
+";
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::Number(2.0));
 }
 
 #[test]

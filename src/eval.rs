@@ -1,4 +1,4 @@
-use crate::{array, string, token, Env, Type};
+use crate::{array, token, Env, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -33,7 +33,7 @@ impl Evaluable for token::Expression {
         use token::Expression::*;
         match self {
             Comparison(c) => c.eval(env),
-            Function(arg_names, expression) => Type::Function(env.clone(), arg_names, *expression),
+            Function(arg_names, expression) => Type::Function(env.clone(), arg_names, expression),
         }
     }
 }
@@ -58,7 +58,7 @@ impl Evaluable for token::Additive {
     fn eval(self, env: &mut Env) -> Type {
         let left = self.left.eval(env);
 
-        if self.rights.len() == 0 {
+        if self.rights.is_empty() {
             return left;
         }
 
@@ -84,7 +84,7 @@ impl Evaluable for token::Multitive {
     fn eval(self, env: &mut Env) -> Type {
         let left = self.left.clone().eval(env);
 
-        if self.rights.len() == 0 {
+        if self.rights.is_empty() {
             return left;
         }
 
@@ -95,7 +95,7 @@ impl Evaluable for token::Multitive {
                     match right.kind {
                         Mul => base *= value,
                         Div => base /= value,
-                        Surplus => base = base % value,
+                        Surplus => base %= value,
                     }
                     continue;
                 }

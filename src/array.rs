@@ -29,7 +29,7 @@ impl Native for Range {
         ""
     }
 
-    fn get_prop(&self, env: &mut Env, name: &str) -> Type {
+    fn get_prop(&self, _env: &mut Env, _name: &str) -> Type {
         panic!();
     }
 
@@ -60,7 +60,7 @@ impl Native for Map {
         ""
     }
 
-    fn get_prop(&self, env: &mut Env, name: &str) -> Type {
+    fn get_prop(&self, _env: &mut Env, _name: &str) -> Type {
         panic!();
     }
 
