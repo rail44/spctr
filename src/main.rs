@@ -1,15 +1,17 @@
-use pest::Parser as PestParser;
-use pest::iterators::{Pair, Pairs};
-use pest_derive::Parser as PestParser;
+mod string;
+mod array;
+mod token;
+mod eval;
+
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter::IntoIterator;
 use std::fmt::Debug;
 use std::any::Any;
-
-mod string;
-mod array;
+use std::str::FromStr;
+use token::Source;
+use eval::{eval_source, Evaluable};
 
 #[derive(Debug, Clone)]
 pub struct NativeType(Rc<dyn Native>);
@@ -43,8 +45,8 @@ pub enum Type {
     Number(f64),
     String(String),
     Array(Vec<Type>),
-    Map(HashMap<String, Expression>),
-    Function(Env, Vec<String>, Expression),
+    Map(HashMap<String, token::Expression>),
+    Function(Env, Vec<String>, token::Expression),
     Boolean(bool),
     Native(NativeType)
 }
@@ -97,13 +99,9 @@ impl Type {
     }
 }
 
-#[derive(PestParser)]
-#[grammar = "grammar.pest"]
-struct Parser;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Env {
-    binds: HashMap<String, Expression>,
+    binds: HashMap<String, token::Expression>,
     evaluated: HashMap<String, Type>,
     parent: Option<Rc<RefCell<Env>>>
 }
@@ -122,455 +120,6 @@ impl Env {
         self.parent.as_ref().unwrap().borrow_mut().get_value(name)
     }
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
-    Comparison(Comparison),
-    Function(Vec<String>, Box<Expression>),
-}
-
-impl Expression {
-    fn eval(self, env: &mut Env) -> Type {
-        use Expression::*;
-        match self {
-            Comparison(c) => c.eval(env),
-            Function(arg_names, expression) => Type::Function(env.clone(), arg_names, *expression),
-        }
-    }
-}
-
-impl Into<String> for Expression {
-    fn into(self) -> String {
-        if let Expression::Comparison(e) = self {
-            return e.into();
-        }
-        panic!("{:?}", self);
-    }
-}
-
-impl From<Pair<'_, Rule>> for Expression {
-    fn from(pair: Pair<Rule>) -> Self {
-        use Expression::*;
-        match pair.as_rule() {
-            Rule::comparison => Comparison(pair.into_inner().into()),
-            Rule::function => {
-                let mut v: Vec<Pair<Rule>> = pair.into_inner().collect();
-                let expression = v.pop().unwrap().into_inner().next().unwrap().into();
-                let mut arg_names = vec![];
-                for pair in v {
-                    arg_names.push(pair.as_str().to_string());
-                }
-                Function(arg_names, Box::new(expression))
-            }
-            _ => unreachable!("{:?}", pair)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Source {
-    binds: HashMap<String, Expression>,
-    expressions: Vec<Expression>
-}
-
-impl Source {
-    fn eval(mut self, env: Option<&mut Env>) -> Type {
-        if let Some(expression) = self.expressions.pop() {
-            let mut env = Env {
-                binds: self.binds,
-                evaluated: [
-                    ("Array".to_string(), array::Array.into())
-                ].iter().cloned().collect(),
-                parent: env.map(|e| Rc::new(RefCell::new(e.clone())))
-            };
-            return expression.eval(&mut env)
-        }
-
-        Type::Map(self.binds)
-    }
-}
-
-impl From<Pairs<'_, Rule>> for Source {
-    fn from(pairs: Pairs<Rule>) -> Self {
-        let mut binds = HashMap::new();
-        let mut expressions = vec![];
-        for pair in pairs {
-            match pair.as_rule() {
-                Rule::bind => {
-                    let mut inner = pair.into_inner();
-                    let name = inner.next().unwrap().as_str();
-                    let expression = inner.next().unwrap().into_inner().next().unwrap().into();
-                    binds.insert(name.to_string(), expression);
-                }
-                Rule::expression => expressions.push(Expression::from(pair.into_inner().next().unwrap())),
-                _ => unreachable!("{:?}", pair)
-            }
-        }
-        Source {
-            binds,
-            expressions
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Comparison {
-    left: Additive,
-    rights: Vec<ComparisonRight>
-}
-
-impl Comparison {
-    fn eval(self, env: &mut Env) -> Type {
-        let mut base = self.left.eval(env);
-
-        for right in self.rights {
-            use ComparisonKind::*;
-            let value = right.value.eval(env);
-            match right.kind {
-                Equal => base = Type::Boolean(base == value),
-                NotEqual => base = Type::Boolean(base != value),
-            }
-        }
-        base
-    }
-}
-
-impl From<Pairs<'_, Rule>> for Comparison {
-    fn from(mut pairs: Pairs<Rule>) -> Self {
-        let left = Additive::from(pairs.next().unwrap().into_inner());
-        let mut rights = vec![];
-
-        for pair in pairs {
-            rights.push(ComparisonRight::from(pair));
-        }
-
-        Self {
-            left,
-            rights
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum ComparisonKind {
-    Equal,
-    NotEqual
-}
-
-impl From<&Pair<'_, Rule>> for ComparisonKind {
-    fn from(pair: &Pair<Rule>) -> Self {
-        use ComparisonKind::*;
-        match pair.as_rule() {
-            Rule::equal => Equal,
-            Rule::not_equal => NotEqual,
-            _ => unreachable!("{:?}", pair)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct ComparisonRight {
-    kind: ComparisonKind,
-    value: Additive
-}
-
-impl From<Pair<'_, Rule>> for ComparisonRight {
-    fn from(pair: Pair<'_, Rule>) -> Self {
-        let kind = ComparisonKind::from(&pair);
-        let value = Additive::from(pair.into_inner().next().unwrap().into_inner());
-
-        Self {
-            kind,
-            value
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct Additive {
-    left: Multitive,
-    rights: Vec<AdditiveRight>
-}
-
-impl Additive {
-    fn eval(self, env: &mut Env) -> Type {
-        let left = self.left.eval(env);
-
-        if self.rights.len() == 0 {
-            return  left;
-        }
-
-        if let Type::Number(mut base) = left {
-            for right in self.rights {
-                use AdditiveKind::*;
-                if let Type::Number(value) = right.value.eval(env) {
-                    match right.kind {
-                        Add => base += value,
-                        Sub => base -= value,
-                    }
-                    continue;
-                }
-                panic!("not a number");
-            }
-            return Type::Number(base);
-        }
-        panic!("not a number");
-    }
-}
-
-impl Into<String> for Comparison {
-    fn into(self) -> String {
-        if let Primary::Evaluation(e) = self.left.left.left {
-            return e.left
-        }
-        panic!("{:?}", self);
-    }
-}
-
-impl From<Pairs<'_, Rule>> for Additive {
-    fn from(mut pairs: Pairs<Rule>) -> Self {
-        let left = Multitive::from(pairs.next().unwrap().into_inner());
-        let mut rights = vec![];
-
-        for pair in pairs {
-            rights.push(AdditiveRight::from(pair));
-        }
-
-        Self {
-            left,
-            rights
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum AdditiveKind {
-    Add,
-    Sub
-}
-
-impl From<&Pair<'_, Rule>> for AdditiveKind {
-    fn from(pair: &Pair<Rule>) -> Self {
-        use AdditiveKind::*;
-        match pair.as_rule() {
-            Rule::add => Add,
-            Rule::sub => Sub,
-            _ => unreachable!("{:?}", pair)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct AdditiveRight {
-    kind: AdditiveKind,
-    value: Multitive
-}
-
-impl From<Pair<'_, Rule>> for AdditiveRight {
-    fn from(pair: Pair<'_, Rule>) -> Self {
-        let kind = AdditiveKind::from(&pair);
-        let value = Multitive::from(pair.into_inner().next().unwrap().into_inner());
-
-        Self {
-            kind,
-            value
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct Multitive {
-    left: Primary,
-    rights: Vec<MultitiveRight>
-}
-
-impl Multitive {
-    fn eval(self, env: &mut Env) -> Type {
-        let left = self.left.clone().eval(env);
-
-        if self.rights.len() == 0 {
-            return  left;
-        }
-
-        if let Type::Number(mut base) = left {
-            for right in self.rights {
-                if let Type::Number(value) = right.value.clone().eval(env) {
-                    use MultitiveKind::*;
-                    match right.kind {
-                        Mul => base *= value,
-                        Div => base /= value,
-                        Surplus => base = base % value,
-                    }
-                    continue;
-                }
-                panic!("not a number: {:?}", right);
-            }
-            return Type::Number(base);
-        }
-        panic!("not a number: {:?}", self.left.clone());
-    }
-}
-
-impl From<Pairs<'_, Rule>> for Multitive {
-    fn from(mut pairs: Pairs<Rule>) -> Self {
-        let left = Primary::from(pairs.next().unwrap());
-        let mut rights = vec![];
-
-        for pair in pairs {
-            rights.push(MultitiveRight::from(pair));
-        }
-
-        Self {
-            left,
-            rights
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum MultitiveKind {
-    Mul,
-    Div,
-    Surplus
-}
-
-impl From<&Pair<'_, Rule>> for MultitiveKind {
-    fn from(pair: &Pair<Rule>) -> Self {
-        use MultitiveKind::*;
-        match pair.as_rule() {
-            Rule::mul => Mul,
-            Rule::div => Div,
-            Rule::surplus => Surplus,
-            _ => unreachable!("{:?}", pair)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct MultitiveRight {
-    kind: MultitiveKind,
-    value: Primary
-}
-
-impl From<Pair<'_, Rule>> for MultitiveRight {
-    fn from(pair: Pair<'_, Rule>) -> Self {
-        let kind = MultitiveKind::from(&pair);
-        let value = Primary::from(pair.into_inner().next().unwrap());
-
-        Self {
-            kind,
-            value
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Primary {
-    Number(f64),
-    String(String),
-    Parenthesis(Box<Expression>),
-    Block(Box<Source>),
-    Evaluation(Evaluation),
-    If(Box<Comparison>, Box<Expression>, Box<Expression>)
-}
-
-impl Primary {
-    fn eval(self, env: &mut Env) -> Type {
-        use Primary::*;
-        match self {
-            Number(f) => Type::Number(f),
-            String(s) => Type::String(s),
-            Parenthesis(a) => a.eval(env),
-            Block(s) => s.eval(Some(env)),
-            Evaluation(e) => e.eval(env),
-            If(cond, cons, alt) => {
-                match cond.eval(env) {
-                    Type::Boolean(true) => cons.eval(env),
-                    Type::Boolean(false) => alt.eval(env),
-                    _ => panic!(),
-                }
-            }
-        }
-    }
-}
-
-impl From<Pair<'_, Rule>> for Primary {
-    fn from(pair: Pair<Rule>) -> Self {
-        match pair.as_rule() {
-            Rule::parenthesis => Primary::Parenthesis(Box::new(pair.into_inner().next().unwrap().into_inner().next().unwrap().into())),
-            Rule::number => Primary::Number(pair.as_str().parse().unwrap()),
-            Rule::string => Primary::String(pair.as_str().to_string()),
-            Rule::block => Primary::Block(Box::new(Source::from(pair.into_inner()))),
-            Rule::evaluation => Primary::Evaluation(Evaluation::from(pair.into_inner())),
-            Rule::_if => {
-                let mut inner = pair.into_inner();
-                Primary::If(
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into_inner().into()),
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into()),
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into())
-                )
-            }
-            _ => unreachable!("{:?}", pair)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct Evaluation {
-    left: String,
-    rights: Vec<EvaluationRight>,
-}
-
-impl Evaluation {
-    fn eval(self, env: &mut Env) -> Type {
-        let mut base = env.get_value(&self.left);
-
-        for right in self.rights {
-            use EvaluationRight::*;
-            match right {
-                Access(name) => {
-                    base = base.get_prop(env, &name);
-                }
-                Call(arg) => {
-                    base = base.call(&mut env.clone(), vec![arg.eval(env)]);
-                }
-            }
-        }
-        base
-    }
-}
-
-impl From<Pairs<'_, Rule>> for Evaluation {
-    fn from(mut pairs: Pairs<Rule>) -> Self {
-        let left = pairs.next().unwrap().as_str().to_string();
-        let mut rights = vec![];
-        for pair in pairs {
-            rights.push(EvaluationRight::from(pair));
-        }
-        Evaluation {
-            left,
-            rights
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum EvaluationRight {
-    Call(Expression),
-    Access(String),
-}
-
-impl From<Pair<'_, Rule>> for EvaluationRight {
-    fn from(pair: Pair<Rule>) -> Self {
-        use EvaluationRight::*;
-        match pair.as_rule() {
-            Rule::calling => Call(pair.into_inner().next().unwrap().into_inner().next().unwrap().into()),
-            Rule::identify => Access(pair.as_str().to_string()),
-            _ => unreachable!("{:?}", pair)
-        }
-    }
-}
-
 #[test]
 fn test_call() {
     let ast = "hoge: (fuga) => {
@@ -579,9 +128,8 @@ fn test_call() {
 
 hoge(1)
 ";
-    let pairs = Parser::parse(Rule::source, ast).unwrap();
-    let source = Source::from(pairs);
-    assert!(source.eval(None) == Type::Number(2.0));
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::Number(2.0));
 }
 
 #[test]
@@ -589,9 +137,8 @@ fn test_range() {
     let ast = "
 Array.range({start: 1, end: 100})";
 
-    let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
-    println!("{:?}", source.clone().eval(None));
-    assert!(source.eval(None) == Type::String("hogefuga".to_string()));
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::String("hogefuga".to_string()));
 }
 
 #[test]
@@ -607,17 +154,16 @@ fn test_fizzbuzz() {
 },
 Array.range({start: 1, end: 100}).map(fizzbuzz)";
 
-    let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
-    println!("{:?}", source.clone().eval(None));
-    assert!(source.eval(None) == Type::String("hogefuga".to_string()));
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::String("hogefuga".to_string()));
 }
 
 #[test]
 fn test_string_concat() {
     let ast = "hoge: \"hoge\",
 hoge.concat(\"fuga\")";
-    let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
-    assert!(source.eval(None) == Type::String("hogefuga".to_string()));
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::String("hogefuga".to_string()));
 }
 
 #[test]
@@ -630,87 +176,6 @@ fn test_bind_and_access() {
 
 hoge.baz
 ";
-    let source = Source::from(Parser::parse(Rule::source, ast).unwrap());
-    assert!(source.eval(None) == Type::Number(35.0));
-}
-
-#[test]
-fn test_parsing_identify() {
-    Parser::parse(Rule::identify, "hoge").unwrap();
-}
-
-#[test]
-fn test_parsing_comparison() {
-    Parser::parse(Rule::comparison, "1 = 0").unwrap();
-}
-
-#[test]
-fn test_parsing_additive() {
-    Parser::parse(Rule::additive, "2").unwrap();
-    Parser::parse(Rule::additive, "(2 + i) / j * 3 - k").unwrap();
-}
-
-#[test]
-fn test_parsing_bind() {
-    Parser::parse(Rule::bind, "hoge: 2").unwrap();
-    Parser::parse(Rule::bind, "hoge: 2 / 1").unwrap();
-}
-
-#[test]
-fn test_parsing_evaluation() {
-    Parser::parse(Rule::evaluation, "hoge(1 * 2 + 3)").unwrap();
-}
-
-#[test]
-fn test_parsing_string() {
-    Parser::parse(Rule::string, "\"hoge fuga\"").unwrap();
-    Parser::parse(Rule::string, "\"\"").unwrap();
-}
-
-#[test]
-fn test_parsing_source_1() {
-    let ast = "i";
-    Parser::parse(Rule::source, ast).unwrap();
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
-}
-
-#[test]
-fn test_parsing_source_2() {
-    let ast = "1 + 2";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
-}
-
-#[test]
-fn test_parsing_source_3() {
-    let ast = "i: j";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
-}
-
-#[test]
-fn test_parsing_source_4() {
-    let ast = "i: j / 2,
-j: 5,
-k: k + 1,
-i * (j + 3) + (j / i)";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
-}
-
-#[test]
-fn test_parsing_source_5() {
-    let ast = "fizzbuzz: (i) => {
-  is_fizz: i % 3 = 0,
-  is_buzz: i % 5 = 0,
-  fizz: if is_fizz \"fizz\" \"\",
-  buzz: if is_buzz \"buzz\" \"\",
-
-  fizz.concat(buzz)
-},
-Array.range({start: 1, end: 100}).map(fizzbuzz)";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
-}
-
-#[test]
-fn test_parsing_source_6() {
-    let ast = "i(1)";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::Number(35.0));
 }
