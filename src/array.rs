@@ -1,4 +1,4 @@
-use crate::{Env, Native, Type};
+use crate::{Env, Native, NativeCallable, Type, BoxedNativeCallable};
 use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -11,26 +11,22 @@ impl Native for Array {
 
     fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
         match name {
-            "range" => Range.into(),
+            "range" => BoxedNativeCallable::new(Range).into(),
             _ => unreachable!(),
         }
     }
 
-    fn call(&self, _env: &mut Env, _args: Vec<Type>) -> Type {
-        panic!();
+    fn box_clone(&self) -> Box<dyn Native> {
+        Box::new(self.clone())
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Range;
 
-impl Native for Range {
+impl NativeCallable for Range {
     fn comparator(&self) -> &str {
         ""
-    }
-
-    fn get_prop(&self, _env: &mut Env, _name: &str) -> Type {
-        panic!();
     }
 
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
@@ -44,6 +40,10 @@ impl Native for Range {
         }
         panic!();
     }
+
+    fn box_clone(&self) -> Box<dyn NativeCallable> {
+        Box::new(self.clone())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,13 +55,9 @@ impl Map {
     }
 }
 
-impl Native for Map {
+impl NativeCallable for Map {
     fn comparator(&self) -> &str {
         ""
-    }
-
-    fn get_prop(&self, _env: &mut Env, _name: &str) -> Type {
-        panic!();
     }
 
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
@@ -72,5 +68,9 @@ impl Native for Map {
                 .map(|v| arg.clone().call(env, vec![v.clone()]))
                 .collect(),
         )
+    }
+
+    fn box_clone(&self) -> Box<dyn NativeCallable> {
+        Box::new(self.clone())
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Env, Native, Type};
+use crate::{Env, NativeCallable, Type};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Concat(String);
@@ -9,13 +9,9 @@ impl Concat {
     }
 }
 
-impl Native for Concat {
+impl NativeCallable for Concat {
     fn comparator(&self) -> &str {
         &self.0
-    }
-
-    fn get_prop(&self, _env: &mut Env, _name: &str) -> Type {
-        unimplemented!();
     }
 
     fn call(&self, _env: &mut Env, mut args: Vec<Type>) -> Type {
@@ -23,5 +19,9 @@ impl Native for Concat {
             return Type::String(format!("{}{}", self.0, s));
         }
         panic!();
+    }
+
+    fn box_clone(&self) -> Box<dyn NativeCallable> {
+        Box::new(self.clone())
     }
 }

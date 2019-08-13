@@ -368,7 +368,6 @@ fn test_parsing_string() {
 fn test_parsing_source_1() {
     let ast = "i";
     Parser::parse(Rule::source, ast).unwrap();
-    let source = Source::from_str(ast).unwrap();
     Source::from(Parser::parse(Rule::source, ast).unwrap());
 }
 

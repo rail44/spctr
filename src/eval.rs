@@ -1,4 +1,4 @@
-use crate::{array, token, Env, Type};
+use crate::{array, token, Env, Type, BoxedNative};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -6,7 +6,7 @@ pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {
         let mut env = Env {
             binds: source.binds,
-            evaluated: [("Array".to_string(), array::Array.into())]
+            evaluated: [("Array".to_string(), BoxedNative::new(array::Array).into())]
                 .iter()
                 .cloned()
                 .collect(),

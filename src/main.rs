@@ -13,30 +13,77 @@ use std::rc::Rc;
 use std::str::FromStr;
 use token::Source;
 
-#[derive(Debug, Clone)]
-pub struct NativeType(Rc<dyn Native>);
+#[derive(Debug)]
+pub struct BoxedNative(Box<dyn Native>);
 
-impl NativeType {
-    fn new<N: Native>(v: N) -> Self {
-        NativeType(Rc::new(v))
+impl BoxedNative {
+    pub fn new<N: Native>(n: N) -> Self {
+        BoxedNative(Box::new(n))
+    }
+
+    fn get_prop(&self, env: &mut Env, name: &str) -> Type {
+        self.0.get_prop(env, name)
     }
 }
 
 pub trait Native: 'static + Debug {
     fn get_prop(&self, env: &mut Env, name: &str) -> Type;
-    fn call(&self, env: &mut Env, args: Vec<Type>) -> Type;
     fn comparator(&self) -> &str;
+    fn box_clone(&self) -> Box<dyn Native>;
 }
 
-impl<N: Native> From<N> for Type {
-    fn from(n: N) -> Self {
-        Type::Native(NativeType::new(n))
+impl Clone for BoxedNative {
+    fn clone(&self) -> Self {
+        BoxedNative(self.0.box_clone())
     }
 }
 
-impl PartialEq for NativeType {
+impl From<BoxedNative> for Type {
+    fn from(n: BoxedNative) -> Type {
+        Type::Native(n)
+    }
+}
+
+impl PartialEq for BoxedNative {
     fn eq(&self, other: &Self) -> bool {
         self.0.type_id() == other.0.type_id() && self.0.comparator() == other.0.comparator()
+    }
+}
+
+#[derive(Debug)]
+pub struct BoxedNativeCallable(Box<dyn NativeCallable>);
+
+impl BoxedNativeCallable {
+    pub fn new<N: NativeCallable>(n: N) -> Self {
+        BoxedNativeCallable(Box::new(n))
+    }
+
+    fn call(&self, env: &mut Env, args: Vec<Type>) -> Type {
+        self.0.call(env, args)
+    }
+}
+
+pub trait NativeCallable: 'static + Debug {
+    fn call(&self, env: &mut Env, args: Vec<Type>) -> Type;
+    fn comparator(&self) -> &str;
+    fn box_clone(&self) -> Box<dyn NativeCallable>;
+}
+
+impl Clone for BoxedNativeCallable {
+    fn clone(&self) -> Self {
+        BoxedNativeCallable(self.0.box_clone())
+    }
+}
+
+impl PartialEq for BoxedNativeCallable {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.type_id() == other.0.type_id() && self.0.comparator() == other.0.comparator()
+    }
+}
+
+impl From<BoxedNativeCallable> for Type {
+    fn from(n: BoxedNativeCallable) -> Type {
+        Type::NativeCallable(n)
     }
 }
 
@@ -48,7 +95,8 @@ pub enum Type {
     Map(HashMap<String, token::Expression>),
     Function(Env, Vec<String>, Box<token::Expression>),
     Boolean(bool),
-    Native(NativeType),
+    Native(BoxedNative),
+    NativeCallable(BoxedNativeCallable),
 }
 
 impl Type {
@@ -63,14 +111,14 @@ impl Type {
                 child.get_value(name)
             }
             Type::Array(v) => match name {
-                "map" => array::Map::new(v.clone()).into(),
+                "map" => BoxedNativeCallable::new(array::Map::new(v.clone())).into(),
                 _ => panic!(),
             },
             Type::String(s) => match name {
-                "concat" => string::Concat::new(s.clone()).into(),
+                "concat" => BoxedNativeCallable::new(string::Concat::new(s.clone())).into(),
                 _ => panic!(),
             },
-            Type::Native(n) => n.0.get_prop(env, name),
+            Type::Native(n) => n.get_prop(env, name),
             _ => unreachable!(),
         }
     }
@@ -89,7 +137,7 @@ impl Type {
                 };
                 expression.eval(&mut env)
             }
-            Type::Native(n) => n.0.call(env, args),
+            Type::NativeCallable(n) => n.call(env, args),
             _ => unreachable!(),
         }
     }
