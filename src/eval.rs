@@ -1,4 +1,4 @@
-use crate::{array, token, Env, Type, BoxedNative};
+use crate::{array, token, BoxedNative, Env, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
 
