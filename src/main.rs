@@ -40,15 +40,16 @@ fn main() {
     let source = Source::from_str(ast).unwrap();
     println!("{}", eval_source(source, None));
 
-    let ast = "fizzbuzz: (i) => {
+    let ast = r#"
+fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
   is_buzz: i % 5 = 0,
-  fizz: if is_fizz \"fizz\" \"\",
-  buzz: if is_buzz \"buzz\" \"\",
+  fizz: if is_fizz "fizz" "",
+  buzz: if is_buzz "buzz" "",
 
   fizz.concat(buzz)
 },
-List.range({start: 1, end: 100}).map(fizzbuzz)";
+List.range({start: 1, end: 100}).map(fizzbuzz)"#;
     let source = Source::from_str(ast).unwrap();
     println!("{}", eval_source(source, None));
 
@@ -63,44 +64,48 @@ List.range({start: 1, end: 100}).map(fizzbuzz)";
 
 #[test]
 fn test_call() {
-    let ast = "hoge: (fuga) => {
+    let ast = r#"
+hoge: (fuga) => {
   fuga + 1
 },
 
-hoge(1)
-";
+hoge(1)"#;
     let source = Source::from_str(ast).unwrap();
     assert!(eval_source(source, None) == Type::Number(2.0));
 }
 
 #[test]
 fn test_list() {
-    let ast = "[1, \"hoge\"]";
+    use list::List;
+
+    let ast = r#"[1, "hoge"]"#;
     let source = Source::from_str(ast).unwrap();
     assert!(
         eval_source(source, None)
-            == Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())])
+            == Type::List(List::new(vec![Type::Number(1.0), Type::String("hoge".to_string())]))
     );
 }
 
 #[test]
 fn test_string_concat() {
-    let ast = "hoge: \"hoge\",
-hoge.concat(\"fuga\")";
+    let ast = r#"
+hoge: "hoge",
+hoge.concat("fuga")"#;
     let source = Source::from_str(ast).unwrap();
     assert!(eval_source(source, None) == Type::String("hogefuga".to_string()));
 }
 
 #[test]
 fn test_bind_and_access() {
-    let ast = "hoge: {
+    let ast = r#"
+hoge: {
   foo: 12,
   bar: 23,
   baz: foo + bar
 },
 
 hoge.baz
-";
+"#;
     let source = Source::from_str(ast).unwrap();
     assert!(eval_source(source, None) == Type::Number(35.0));
 }
