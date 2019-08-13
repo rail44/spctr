@@ -1,10 +1,10 @@
-use crate::{BoxedNativeCallable, Env, Native, NativeCallable, Type};
+use crate::{Env, Native, NativeCallable, Type, BoxedNativeCallable};
 use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Array;
+pub struct List;
 
-impl Native for Array {
+impl Native for List {
     fn comparator(&self) -> &str {
         ""
     }
@@ -36,7 +36,7 @@ impl NativeCallable for Range {
         {
             let start = start as i32;
             let end = end as i32;
-            return Type::Array((start..end).map(|i| Type::Number(i.into())).collect());
+            return Type::List((start..end).map(|i| Type::Number(i.into())).collect());
         }
         panic!();
     }
@@ -62,7 +62,7 @@ impl NativeCallable for Map {
 
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
         let arg = args.pop().unwrap();
-        Type::Array(
+        Type::List(
             self.0
                 .iter()
                 .map(|v| arg.clone().call(env, vec![v.clone()]))

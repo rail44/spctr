@@ -31,10 +31,7 @@ impl From<Pair<'_, Rule>> for Expression {
             Rule::function => {
                 let mut v: Vec<Pair<Rule>> = pair.into_inner().collect();
                 let expression = v.pop().unwrap().into_inner().next().unwrap().into();
-                let mut arg_names = vec![];
-                for pair in v {
-                    arg_names.push(pair.as_str().to_string());
-                }
+                let arg_names = v.into_iter().map(|p| p.as_str().to_string()).collect();
                 Function(arg_names, Box::new(expression))
             }
             _ => unreachable!("{:?}", pair),
@@ -247,6 +244,7 @@ pub enum Primary {
     String(String),
     Parenthesis(Box<Expression>),
     Block(Box<Source>),
+    List(Vec<Expression>),
     Evaluation(Evaluation),
     If(Box<Comparison>, Box<Expression>, Box<Expression>),
 }
@@ -265,6 +263,13 @@ impl From<Pair<'_, Rule>> for Primary {
             )),
             Rule::number => Primary::Number(pair.as_str().parse().unwrap()),
             Rule::string => Primary::String(pair.as_str().to_string()),
+            Rule::list => {
+                let mut expressions = vec![];
+                for member in pair.into_inner() {
+                    expressions.push(member.into_inner().next().unwrap().into())
+                }
+                Primary::List(expressions)
+            },
             Rule::block => Primary::Block(Box::new(Source::from(pair.into_inner()))),
             Rule::evaluation => Primary::Evaluation(Evaluation::from(pair.into_inner())),
             Rule::_if => {

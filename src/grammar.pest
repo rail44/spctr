@@ -22,11 +22,12 @@ div = { "/" ~ primary }
 surplus = { "%" ~ primary }
   
 primary = _{
-  "(" ~ parenthesis ~ ")" | block | _if | literal | evaluation
+  "(" ~ parenthesis ~ ")" | block | list | _if | literal | evaluation
 }
 
 parenthesis = { expression }
 
+list = { "[" ~ (expression ~ (delimiter ~ expression)*)? ~ "]" }
 block = { "{" ~ (statement ~ (delimiter ~ statement)*)? ~ "}" }
 _if = { "if" ~ expression ~ expression ~ expression }
 literal = _{ number | string_literal }

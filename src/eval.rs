@@ -1,12 +1,13 @@
-use crate::{array, token, BoxedNative, Env, Type};
+use crate::{list, token, BoxedNative, Env, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::iter::IntoIterator;
 
 pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {
         let mut env = Env {
             binds: source.binds,
-            evaluated: [("Array".to_string(), BoxedNative::new(array::Array).into())]
+            evaluated: [("List".to_string(), BoxedNative::new(list::List).into())]
                 .iter()
                 .cloned()
                 .collect(),
@@ -134,6 +135,7 @@ impl Evaluable for token::Primary {
             String(s) => Type::String(s),
             Parenthesis(a) => a.eval(env),
             Block(s) => s.eval(env),
+            List(v) => Type::List(v.into_iter().map(|e| e.eval(env)).collect()),
             Evaluation(e) => e.eval(env),
             If(cond, cons, alt) => match cond.eval(env) {
                 Type::Boolean(true) => cons.eval(env),

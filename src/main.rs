@@ -1,4 +1,4 @@
-mod array;
+mod list;
 mod eval;
 mod string;
 mod token;
@@ -91,7 +91,7 @@ impl From<BoxedNativeCallable> for Type {
 pub enum Type {
     Number(f64),
     String(String),
-    Array(Vec<Type>),
+    List(Vec<Type>),
     Map(HashMap<String, token::Expression>),
     Function(Env, Vec<String>, Box<token::Expression>),
     Boolean(bool),
@@ -110,8 +110,8 @@ impl Type {
                 };
                 child.get_value(name)
             }
-            Type::Array(v) => match name {
-                "map" => BoxedNativeCallable::new(array::Map::new(v.clone())).into(),
+            Type::List(v) => match name {
+                "map" => BoxedNativeCallable::new(list::Map::new(v.clone())).into(),
                 _ => panic!(),
             },
             Type::String(s) => match name {
@@ -167,7 +167,7 @@ impl Env {
 
 fn main() {
     let ast = "
-Array.range({start: 1, end: 100})";
+List.range({start: 1, end: 100})";
 
     let source = Source::from_str(ast).unwrap();
     println!("{:?}", eval_source(source, None));
@@ -180,7 +180,7 @@ Array.range({start: 1, end: 100})";
 
   fizz.concat(buzz)
 },
-Array.range({start: 1, end: 100}).map(fizzbuzz)";
+List.range({start: 1, end: 100}).map(fizzbuzz)";
 
     let source = Source::from_str(ast).unwrap();
     println!("{:?}", eval_source(source, None));
@@ -196,6 +196,13 @@ hoge(1)
 ";
     let source = Source::from_str(ast).unwrap();
     assert!(eval_source(source, None) == Type::Number(2.0));
+}
+
+#[test]
+fn test_list() {
+    let ast = "[1, \"hoge\"]";
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())]));
 }
 
 #[test]
