@@ -13,7 +13,11 @@ impl List {
 
 impl std::fmt::Display for List {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let v: Vec<String> = self.0.iter().map(|e| format!("{}", e).to_string()).collect();
+        let v: Vec<String> = self
+            .0
+            .iter()
+            .map(|e| format!("{}", e).to_string())
+            .collect();
         write!(f, "[{}]", v.join(", "))
     }
 }
@@ -59,7 +63,9 @@ impl NativeCallable for Range {
         {
             let start = start as i32;
             let end = end as i32;
-            return Type::List(List::new((start..=end).map(|i| Type::Number(i.into())).collect()));
+            return Type::List(List::new(
+                (start..=end).map(|i| Type::Number(i.into())).collect(),
+            ));
         }
         panic!();
     }
@@ -91,14 +97,13 @@ impl NativeCallable for Map {
 
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
         let arg = args.pop().unwrap();
-        Type::List(
-            List::new(
-                (self.0).0
-                    .iter()
-                    .map(|v| arg.clone().call(env, vec![v.clone()]))
-                    .collect(),
-            )
-        )
+        Type::List(List::new(
+            (self.0)
+                .0
+                .iter()
+                .map(|v| arg.clone().call(env, vec![v.clone()]))
+                .collect(),
+        ))
     }
 
     fn box_clone(&self) -> Box<dyn NativeCallable> {

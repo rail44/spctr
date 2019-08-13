@@ -8,10 +8,13 @@ pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {
         let mut env = Env {
             binds: source.binds,
-            evaluated: [("List".to_string(), BoxedNative::new(list::ListModule).into())]
-                .iter()
-                .cloned()
-                .collect(),
+            evaluated: [(
+                "List".to_string(),
+                BoxedNative::new(list::ListModule).into(),
+            )]
+            .iter()
+            .cloned()
+            .collect(),
             parent: env.map(|e| Rc::new(RefCell::new(e.clone()))),
         };
         return expression.eval(&mut env);
@@ -136,7 +139,9 @@ impl Evaluable for token::Primary {
             String(s) => Type::String(s),
             Parenthesis(a) => a.eval(env),
             Block(s) => s.eval(env),
-            List(v) => Type::List(list::List::new(v.into_iter().map(|e| e.eval(env)).collect())),
+            List(v) => Type::List(list::List::new(
+                v.into_iter().map(|e| e.eval(env)).collect(),
+            )),
             Evaluation(e) => e.eval(env),
             If(cond, cons, alt) => match cond.eval(env) {
                 Type::Boolean(true) => cons.eval(env),

@@ -7,9 +7,9 @@ mod types;
 use eval::{eval_source, Evaluable};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::io::{stdin, BufReader, Read};
 use std::rc::Rc;
 use std::str::FromStr;
-use std::io::{stdin, Read, BufReader};
 use token::Source;
 use types::Type;
 
@@ -64,7 +64,10 @@ fn test_list() {
     let source = Source::from_str(ast).unwrap();
     assert!(
         eval_source(source, None)
-            == Type::List(List::new(vec![Type::Number(1.0), Type::String("hoge".to_string())]))
+            == Type::List(List::new(vec![
+                Type::Number(1.0),
+                Type::String("hoge".to_string())
+            ]))
     );
 }
 

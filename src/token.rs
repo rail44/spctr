@@ -1,10 +1,10 @@
+use failure::err_msg;
 use pest::iterators::{Pair, Pairs};
 use pest::Parser as PestParser;
 use pest_derive::Parser as PestParser;
 use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
 use std::str::FromStr;
-use std::convert::{TryInto, TryFrom};
-use failure::err_msg;
 
 #[derive(PestParser)]
 #[grammar = "grammar.pest"]
@@ -66,7 +66,13 @@ impl TryFrom<Pairs<'_, Rule>> for Source {
                 Rule::bind => {
                     let mut inner = pair.into_inner();
                     let name = inner.next().unwrap().as_str();
-                    let expression = inner.next().unwrap().into_inner().next().unwrap().try_into()?;
+                    let expression = inner
+                        .next()
+                        .unwrap()
+                        .into_inner()
+                        .next()
+                        .unwrap()
+                        .try_into()?;
                     binds.insert(name.to_string(), expression);
                 }
                 Rule::expression => {
@@ -297,8 +303,12 @@ impl TryFrom<Pair<'_, Rule>> for Primary {
                 }
                 Ok(Primary::List(expressions))
             }
-            Rule::block => Ok(Primary::Block(Box::new(Source::try_from(pair.into_inner())?))),
-            Rule::evaluation => Ok(Primary::Evaluation(Evaluation::try_from(pair.into_inner())?)),
+            Rule::block => Ok(Primary::Block(Box::new(Source::try_from(
+                pair.into_inner(),
+            )?))),
+            Rule::evaluation => Ok(Primary::Evaluation(Evaluation::try_from(
+                pair.into_inner(),
+            )?)),
             Rule::_if => {
                 let mut inner = pair.into_inner();
                 Ok(Primary::If(
@@ -312,8 +322,24 @@ impl TryFrom<Pair<'_, Rule>> for Primary {
                             .into_inner()
                             .try_into()?,
                     ),
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().try_into()?),
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().try_into()?),
+                    Box::new(
+                        inner
+                            .next()
+                            .unwrap()
+                            .into_inner()
+                            .next()
+                            .unwrap()
+                            .try_into()?,
+                    ),
+                    Box::new(
+                        inner
+                            .next()
+                            .unwrap()
+                            .into_inner()
+                            .next()
+                            .unwrap()
+                            .try_into()?,
+                    ),
                 ))
             }
             _ => Err(err_msg(format!("{:?}", pair))),
