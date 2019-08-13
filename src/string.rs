@@ -26,3 +26,9 @@ impl NativeCallable for Concat {
         Box::new(self.clone())
     }
 }
+
+impl std::fmt::Display for Concat {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "\"{}\".concat", self.0)
+    }
+}

@@ -35,11 +35,10 @@ impl Env {
 }
 
 fn main() {
-    let ast = "
-List.range({start: 1, end: 100})";
+    let ast = "List.range({start: 1, end: 100})";
 
     let source = Source::from_str(ast).unwrap();
-    println!("{:?}", eval_source(source, None));
+    println!("{}", eval_source(source, None));
 
     let ast = "fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
@@ -50,9 +49,16 @@ List.range({start: 1, end: 100})";
   fizz.concat(buzz)
 },
 List.range({start: 1, end: 100}).map(fizzbuzz)";
-
     let source = Source::from_str(ast).unwrap();
-    println!("{:?}", eval_source(source, None));
+    println!("{}", eval_source(source, None));
+
+    let ast = "List";
+    let source = Source::from_str(ast).unwrap();
+    println!("{}", eval_source(source, None));
+
+    let ast = "List.range({start: 0, end: 6}).map";
+    let source = Source::from_str(ast).unwrap();
+    println!("{}", eval_source(source, None));
 }
 
 #[test]

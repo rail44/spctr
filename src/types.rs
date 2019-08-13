@@ -3,7 +3,7 @@ use crate::{list, string, token, Env};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::rc::Rc;
 
 #[derive(Debug)]
@@ -19,7 +19,7 @@ impl BoxedNative {
     }
 }
 
-pub trait Native: 'static + Debug {
+pub trait Native: 'static + Debug + Display {
     fn get_prop(&self, env: &mut Env, name: &str) -> Type;
     fn comparator(&self) -> &str;
     fn box_clone(&self) -> Box<dyn Native>;
@@ -56,7 +56,7 @@ impl BoxedNativeCallable {
     }
 }
 
-pub trait NativeCallable: 'static + Debug {
+pub trait NativeCallable: 'static + Debug + Display {
     fn call(&self, env: &mut Env, args: Vec<Type>) -> Type;
     fn comparator(&self) -> &str;
     fn box_clone(&self) -> Box<dyn NativeCallable>;
@@ -84,7 +84,7 @@ impl From<BoxedNativeCallable> for Type {
 pub enum Type {
     Number(f64),
     String(String),
-    List(Vec<Type>),
+    List(list::List),
     Map(HashMap<String, token::Expression>),
     Function(Env, Vec<String>, Box<token::Expression>),
     Boolean(bool),
@@ -103,8 +103,8 @@ impl Type {
                 };
                 child.get_value(name)
             }
-            Type::List(v) => match name {
-                "map" => BoxedNativeCallable::new(list::Map::new(v.clone())).into(),
+            Type::List(l) => match name {
+                "map" => BoxedNativeCallable::new(list::Map::new(l.clone())).into(),
                 _ => panic!(),
             },
             Type::String(s) => match name {
@@ -132,6 +132,21 @@ impl Type {
             }
             Type::NativeCallable(n) => n.call(env, args),
             _ => unreachable!(),
+        }
+    }
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Type::Number(f) => write!(formatter, "{}", f),
+            Type::String(s) => write!(formatter, "\"{}\"", s),
+            Type::Map(m) => write!(formatter, "{:?}", m),
+            Type::List(l) => write!(formatter, "{}", l),
+            Type::Function(_, _, _) => write!(formatter, "[function]"),
+            Type::Boolean(b) => write!(formatter, "{}", b),
+            Type::Native(n) => write!(formatter, "[Native {}]", n.0),
+            Type::NativeCallable(n) => write!(formatter, "[NativeCallable {}]", n.0),
         }
     }
 }

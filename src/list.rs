@@ -3,9 +3,25 @@ use crate::Env;
 use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct List;
+pub struct List(Vec<Type>);
 
-impl Native for List {
+impl List {
+    pub fn new(v: Vec<Type>) -> Self {
+        List(v)
+    }
+}
+
+impl std::fmt::Display for List {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let v: Vec<String> = self.0.iter().map(|e| format!("{}", e).to_string()).collect();
+        write!(f, "[{}]", v.join(", "))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListModule;
+
+impl Native for ListModule {
     fn comparator(&self) -> &str {
         ""
     }
@@ -19,6 +35,12 @@ impl Native for List {
 
     fn box_clone(&self) -> Box<dyn Native> {
         Box::new(self.clone())
+    }
+}
+
+impl std::fmt::Display for ListModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "ListModule")
     }
 }
 
@@ -37,7 +59,7 @@ impl NativeCallable for Range {
         {
             let start = start as i32;
             let end = end as i32;
-            return Type::List((start..end).map(|i| Type::Number(i.into())).collect());
+            return Type::List(List::new((start..=end).map(|i| Type::Number(i.into())).collect()));
         }
         panic!();
     }
@@ -47,12 +69,18 @@ impl NativeCallable for Range {
     }
 }
 
+impl std::fmt::Display for Range {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "List.range")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct Map(Vec<Type>);
+pub struct Map(List);
 
 impl Map {
-    pub fn new(v: Vec<Type>) -> Self {
-        Map(v)
+    pub fn new(l: List) -> Self {
+        Map(l)
     }
 }
 
@@ -64,14 +92,22 @@ impl NativeCallable for Map {
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
         let arg = args.pop().unwrap();
         Type::List(
-            self.0
-                .iter()
-                .map(|v| arg.clone().call(env, vec![v.clone()]))
-                .collect(),
+            List::new(
+                (self.0).0
+                    .iter()
+                    .map(|v| arg.clone().call(env, vec![v.clone()]))
+                    .collect(),
+            )
         )
     }
 
     fn box_clone(&self) -> Box<dyn NativeCallable> {
         Box::new(self.clone())
+    }
+}
+
+impl std::fmt::Display for Map {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}.map", self.0)
     }
 }
