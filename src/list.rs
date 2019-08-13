@@ -1,4 +1,5 @@
-use crate::{Env, Native, NativeCallable, Type, BoxedNativeCallable};
+use crate::Env;
+use crate::types::{Native, NativeCallable, Type, BoxedNativeCallable};
 use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]

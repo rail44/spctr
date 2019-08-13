@@ -1,4 +1,5 @@
-use crate::{list, token, BoxedNative, Env, Type};
+use crate::{list, token, Env};
+use crate::types::{BoxedNative, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::iter::IntoIterator;
