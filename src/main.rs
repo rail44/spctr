@@ -1,5 +1,5 @@
-mod list;
 mod eval;
+mod list;
 mod string;
 mod token;
 mod types;
@@ -71,7 +71,10 @@ hoge(1)
 fn test_list() {
     let ast = "[1, \"hoge\"]";
     let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, None) == Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())]));
+    assert!(
+        eval_source(source, None)
+            == Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())])
+    );
 }
 
 #[test]

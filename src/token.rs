@@ -269,7 +269,7 @@ impl From<Pair<'_, Rule>> for Primary {
                     expressions.push(member.into_inner().next().unwrap().into())
                 }
                 Primary::List(expressions)
-            },
+            }
             Rule::block => Primary::Block(Box::new(Source::from(pair.into_inner()))),
             Rule::evaluation => Primary::Evaluation(Evaluation::from(pair.into_inner())),
             Rule::_if => {

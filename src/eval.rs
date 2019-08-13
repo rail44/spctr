@@ -1,8 +1,8 @@
-use crate::{list, token, Env};
 use crate::types::{BoxedNative, Type};
+use crate::{list, token, Env};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::iter::IntoIterator;
+use std::rc::Rc;
 
 pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {

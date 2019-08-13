@@ -1,5 +1,5 @@
+use crate::types::{NativeCallable, Type};
 use crate::Env;
-use crate::types::{Type, NativeCallable};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Concat(String);
