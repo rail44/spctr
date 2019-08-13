@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::io::{stdin, Read, BufReader};
 use token::Source;
 use types::Type;
 
@@ -34,32 +35,13 @@ impl Env {
     }
 }
 
-fn main() {
-    let ast = "List.range({start: 1, end: 100})";
+fn main() -> Result<(), failure::Error> {
+    let mut s = String::new();
+    BufReader::new(stdin()).read_to_string(&mut s)?;
 
-    let source = Source::from_str(ast).unwrap();
+    let source = Source::from_str(&s).unwrap();
     println!("{}", eval_source(source, None));
-
-    let ast = r#"
-fizzbuzz: (i) => {
-  is_fizz: i % 3 = 0,
-  is_buzz: i % 5 = 0,
-  fizz: if is_fizz "fizz" "",
-  buzz: if is_buzz "buzz" "",
-
-  fizz.concat(buzz)
-},
-List.range({start: 1, end: 100}).map(fizzbuzz)"#;
-    let source = Source::from_str(ast).unwrap();
-    println!("{}", eval_source(source, None));
-
-    let ast = "List";
-    let source = Source::from_str(ast).unwrap();
-    println!("{}", eval_source(source, None));
-
-    let ast = "List.range({start: 0, end: 6}).map";
-    let source = Source::from_str(ast).unwrap();
-    println!("{}", eval_source(source, None));
+    Ok(())
 }
 
 #[test]

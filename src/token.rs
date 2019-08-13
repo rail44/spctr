@@ -3,6 +3,8 @@ use pest::Parser as PestParser;
 use pest_derive::Parser as PestParser;
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::convert::{TryInto, TryFrom};
+use failure::err_msg;
 
 #[derive(PestParser)]
 #[grammar = "grammar.pest"]
@@ -14,27 +16,29 @@ pub enum Expression {
     Function(Vec<String>, Box<Expression>),
 }
 
-impl Into<String> for Expression {
-    fn into(self) -> String {
+impl TryInto<String> for Expression {
+    type Error = failure::Error;
+    fn try_into(self) -> Result<String, Self::Error> {
         if let Expression::Comparison(e) = self {
-            return e.into();
+            return e.try_into();
         }
-        panic!("{:?}", self);
+        Err(err_msg(format!("{:?}", self)))
     }
 }
 
-impl From<Pair<'_, Rule>> for Expression {
-    fn from(pair: Pair<Rule>) -> Self {
+impl TryFrom<Pair<'_, Rule>> for Expression {
+    type Error = failure::Error;
+    fn try_from(pair: Pair<Rule>) -> Result<Self, Self::Error> {
         use Expression::*;
         match pair.as_rule() {
-            Rule::comparison => Comparison(pair.into_inner().into()),
+            Rule::comparison => Ok(Comparison(pair.into_inner().try_into()?)),
             Rule::function => {
                 let mut v: Vec<Pair<Rule>> = pair.into_inner().collect();
-                let expression = v.pop().unwrap().into_inner().next().unwrap().into();
+                let expression = v.pop().unwrap().into_inner().next().unwrap().try_into()?;
                 let arg_names = v.into_iter().map(|p| p.as_str().to_string()).collect();
-                Function(arg_names, Box::new(expression))
+                Ok(Function(arg_names, Box::new(expression)))
             }
-            _ => unreachable!("{:?}", pair),
+            _ => Err(err_msg(format!("{:?}", pair))),
         }
     }
 }
@@ -46,14 +50,15 @@ pub struct Source {
 }
 
 impl FromStr for Source {
-    type Err = pest::error::Error<Rule>;
+    type Err = failure::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Source::from(Parser::parse(Rule::source, s)?))
+        Ok(Source::try_from(Parser::parse(Rule::source, s)?)?)
     }
 }
 
-impl From<Pairs<'_, Rule>> for Source {
-    fn from(pairs: Pairs<Rule>) -> Self {
+impl TryFrom<Pairs<'_, Rule>> for Source {
+    type Error = failure::Error;
+    fn try_from(pairs: Pairs<Rule>) -> Result<Self, Self::Error> {
         let mut binds = HashMap::new();
         let mut expressions = vec![];
         for pair in pairs {
@@ -61,16 +66,16 @@ impl From<Pairs<'_, Rule>> for Source {
                 Rule::bind => {
                     let mut inner = pair.into_inner();
                     let name = inner.next().unwrap().as_str();
-                    let expression = inner.next().unwrap().into_inner().next().unwrap().into();
+                    let expression = inner.next().unwrap().into_inner().next().unwrap().try_into()?;
                     binds.insert(name.to_string(), expression);
                 }
                 Rule::expression => {
-                    expressions.push(Expression::from(pair.into_inner().next().unwrap()))
+                    expressions.push(Expression::try_from(pair.into_inner().next().unwrap())?)
                 }
-                _ => unreachable!("{:?}", pair),
+                _ => return Err(err_msg(format!("{:?}", pair))),
             }
         }
-        Source { binds, expressions }
+        Ok(Source { binds, expressions })
     }
 }
 
@@ -80,16 +85,18 @@ pub struct Comparison {
     pub rights: Vec<ComparisonRight>,
 }
 
-impl From<Pairs<'_, Rule>> for Comparison {
-    fn from(mut pairs: Pairs<Rule>) -> Self {
-        let left = Additive::from(pairs.next().unwrap().into_inner());
+impl TryFrom<Pairs<'_, Rule>> for Comparison {
+    type Error = failure::Error;
+
+    fn try_from(mut pairs: Pairs<Rule>) -> Result<Self, Self::Error> {
+        let left = Additive::try_from(pairs.next().unwrap().into_inner())?;
         let mut rights = vec![];
 
         for pair in pairs {
-            rights.push(ComparisonRight::from(pair));
+            rights.push(ComparisonRight::try_from(pair)?);
         }
 
-        Self { left, rights }
+        Ok(Self { left, rights })
     }
 }
 
@@ -99,13 +106,15 @@ pub enum ComparisonKind {
     NotEqual,
 }
 
-impl From<&Pair<'_, Rule>> for ComparisonKind {
-    fn from(pair: &Pair<Rule>) -> Self {
+impl TryFrom<&Pair<'_, Rule>> for ComparisonKind {
+    type Error = failure::Error;
+
+    fn try_from(pair: &Pair<Rule>) -> Result<Self, Self::Error> {
         use ComparisonKind::*;
         match pair.as_rule() {
-            Rule::equal => Equal,
-            Rule::not_equal => NotEqual,
-            _ => unreachable!("{:?}", pair),
+            Rule::equal => Ok(Equal),
+            Rule::not_equal => Ok(NotEqual),
+            _ => Err(err_msg(format!("{:?}", pair))),
         }
     }
 }
@@ -116,12 +125,14 @@ pub struct ComparisonRight {
     pub value: Additive,
 }
 
-impl From<Pair<'_, Rule>> for ComparisonRight {
-    fn from(pair: Pair<'_, Rule>) -> Self {
-        let kind = ComparisonKind::from(&pair);
-        let value = Additive::from(pair.into_inner().next().unwrap().into_inner());
+impl TryFrom<Pair<'_, Rule>> for ComparisonRight {
+    type Error = failure::Error;
 
-        Self { kind, value }
+    fn try_from(pair: Pair<'_, Rule>) -> Result<Self, Self::Error> {
+        let kind = ComparisonKind::try_from(&pair)?;
+        let value = Additive::try_from(pair.into_inner().next().unwrap().into_inner())?;
+
+        Ok(Self { kind, value })
     }
 }
 
@@ -131,25 +142,29 @@ pub struct Additive {
     pub rights: Vec<AdditiveRight>,
 }
 
-impl Into<String> for Comparison {
-    fn into(self) -> String {
+impl TryInto<String> for Comparison {
+    type Error = failure::Error;
+
+    fn try_into(self) -> Result<String, Self::Error> {
         if let Primary::Evaluation(e) = self.left.left.left {
-            return e.left;
+            return Ok(e.left);
         }
-        panic!("{:?}", self);
+        Err(err_msg(format!("{:?}", self)))
     }
 }
 
-impl From<Pairs<'_, Rule>> for Additive {
-    fn from(mut pairs: Pairs<Rule>) -> Self {
-        let left = Multitive::from(pairs.next().unwrap().into_inner());
+impl TryFrom<Pairs<'_, Rule>> for Additive {
+    type Error = failure::Error;
+
+    fn try_from(mut pairs: Pairs<Rule>) -> Result<Self, Self::Error> {
+        let left = Multitive::try_from(pairs.next().unwrap().into_inner())?;
         let mut rights = vec![];
 
         for pair in pairs {
-            rights.push(AdditiveRight::from(pair));
+            rights.push(AdditiveRight::try_from(pair)?);
         }
 
-        Self { left, rights }
+        Ok(Self { left, rights })
     }
 }
 
@@ -159,13 +174,15 @@ pub enum AdditiveKind {
     Sub,
 }
 
-impl From<&Pair<'_, Rule>> for AdditiveKind {
-    fn from(pair: &Pair<Rule>) -> Self {
+impl TryFrom<&Pair<'_, Rule>> for AdditiveKind {
+    type Error = failure::Error;
+
+    fn try_from(pair: &Pair<Rule>) -> Result<Self, Self::Error> {
         use AdditiveKind::*;
         match pair.as_rule() {
-            Rule::add => Add,
-            Rule::sub => Sub,
-            _ => unreachable!("{:?}", pair),
+            Rule::add => Ok(Add),
+            Rule::sub => Ok(Sub),
+            _ => Err(err_msg(format!("{:?}", pair))),
         }
     }
 }
@@ -176,12 +193,14 @@ pub struct AdditiveRight {
     pub value: Multitive,
 }
 
-impl From<Pair<'_, Rule>> for AdditiveRight {
-    fn from(pair: Pair<'_, Rule>) -> Self {
-        let kind = AdditiveKind::from(&pair);
-        let value = Multitive::from(pair.into_inner().next().unwrap().into_inner());
+impl TryFrom<Pair<'_, Rule>> for AdditiveRight {
+    type Error = failure::Error;
 
-        Self { kind, value }
+    fn try_from(pair: Pair<'_, Rule>) -> Result<Self, Self::Error> {
+        let kind = AdditiveKind::try_from(&pair)?;
+        let value = Multitive::try_from(pair.into_inner().next().unwrap().into_inner())?;
+
+        Ok(Self { kind, value })
     }
 }
 
@@ -191,16 +210,18 @@ pub struct Multitive {
     pub rights: Vec<MultitiveRight>,
 }
 
-impl From<Pairs<'_, Rule>> for Multitive {
-    fn from(mut pairs: Pairs<Rule>) -> Self {
-        let left = Primary::from(pairs.next().unwrap());
+impl TryFrom<Pairs<'_, Rule>> for Multitive {
+    type Error = failure::Error;
+
+    fn try_from(mut pairs: Pairs<Rule>) -> Result<Self, Self::Error> {
+        let left = Primary::try_from(pairs.next().unwrap())?;
         let mut rights = vec![];
 
         for pair in pairs {
-            rights.push(MultitiveRight::from(pair));
+            rights.push(MultitiveRight::try_from(pair)?);
         }
 
-        Self { left, rights }
+        Ok(Self { left, rights })
     }
 }
 
@@ -211,14 +232,16 @@ pub enum MultitiveKind {
     Surplus,
 }
 
-impl From<&Pair<'_, Rule>> for MultitiveKind {
-    fn from(pair: &Pair<Rule>) -> Self {
+impl TryFrom<&Pair<'_, Rule>> for MultitiveKind {
+    type Error = failure::Error;
+
+    fn try_from(pair: &Pair<Rule>) -> Result<Self, Self::Error> {
         use MultitiveKind::*;
         match pair.as_rule() {
-            Rule::mul => Mul,
-            Rule::div => Div,
-            Rule::surplus => Surplus,
-            _ => unreachable!("{:?}", pair),
+            Rule::mul => Ok(Mul),
+            Rule::div => Ok(Div),
+            Rule::surplus => Ok(Surplus),
+            _ => Err(err_msg(format!("{:?}", pair))),
         }
     }
 }
@@ -229,12 +252,14 @@ pub struct MultitiveRight {
     pub value: Primary,
 }
 
-impl From<Pair<'_, Rule>> for MultitiveRight {
-    fn from(pair: Pair<'_, Rule>) -> Self {
-        let kind = MultitiveKind::from(&pair);
-        let value = Primary::from(pair.into_inner().next().unwrap());
+impl TryFrom<Pair<'_, Rule>> for MultitiveRight {
+    type Error = failure::Error;
 
-        Self { kind, value }
+    fn try_from(pair: Pair<'_, Rule>) -> Result<Self, Self::Error> {
+        let kind = MultitiveKind::try_from(&pair)?;
+        let value = Primary::try_from(pair.into_inner().next().unwrap())?;
+
+        Ok(Self { kind, value })
     }
 }
 
@@ -249,32 +274,34 @@ pub enum Primary {
     If(Box<Comparison>, Box<Expression>, Box<Expression>),
 }
 
-impl From<Pair<'_, Rule>> for Primary {
-    fn from(pair: Pair<Rule>) -> Self {
+impl TryFrom<Pair<'_, Rule>> for Primary {
+    type Error = failure::Error;
+
+    fn try_from(pair: Pair<Rule>) -> Result<Self, Self::Error> {
         match pair.as_rule() {
-            Rule::parenthesis => Primary::Parenthesis(Box::new(
+            Rule::parenthesis => Ok(Primary::Parenthesis(Box::new(
                 pair.into_inner()
                     .next()
                     .unwrap()
                     .into_inner()
                     .next()
                     .unwrap()
-                    .into(),
-            )),
-            Rule::number => Primary::Number(pair.as_str().parse().unwrap()),
-            Rule::string => Primary::String(pair.as_str().to_string()),
+                    .try_into()?,
+            ))),
+            Rule::number => Ok(Primary::Number(pair.as_str().parse().unwrap())),
+            Rule::string => Ok(Primary::String(pair.as_str().to_string())),
             Rule::list => {
                 let mut expressions = vec![];
                 for member in pair.into_inner() {
-                    expressions.push(member.into_inner().next().unwrap().into())
+                    expressions.push(member.into_inner().next().unwrap().try_into()?)
                 }
-                Primary::List(expressions)
+                Ok(Primary::List(expressions))
             }
-            Rule::block => Primary::Block(Box::new(Source::from(pair.into_inner()))),
-            Rule::evaluation => Primary::Evaluation(Evaluation::from(pair.into_inner())),
+            Rule::block => Ok(Primary::Block(Box::new(Source::try_from(pair.into_inner())?))),
+            Rule::evaluation => Ok(Primary::Evaluation(Evaluation::try_from(pair.into_inner())?)),
             Rule::_if => {
                 let mut inner = pair.into_inner();
-                Primary::If(
+                Ok(Primary::If(
                     Box::new(
                         inner
                             .next()
@@ -283,13 +310,13 @@ impl From<Pair<'_, Rule>> for Primary {
                             .next()
                             .unwrap()
                             .into_inner()
-                            .into(),
+                            .try_into()?,
                     ),
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into()),
-                    Box::new(inner.next().unwrap().into_inner().next().unwrap().into()),
-                )
+                    Box::new(inner.next().unwrap().into_inner().next().unwrap().try_into()?),
+                    Box::new(inner.next().unwrap().into_inner().next().unwrap().try_into()?),
+                ))
             }
-            _ => unreachable!("{:?}", pair),
+            _ => Err(err_msg(format!("{:?}", pair))),
         }
     }
 }
@@ -300,14 +327,16 @@ pub struct Evaluation {
     pub rights: Vec<EvaluationRight>,
 }
 
-impl From<Pairs<'_, Rule>> for Evaluation {
-    fn from(mut pairs: Pairs<Rule>) -> Self {
+impl TryFrom<Pairs<'_, Rule>> for Evaluation {
+    type Error = failure::Error;
+
+    fn try_from(mut pairs: Pairs<Rule>) -> Result<Self, Self::Error> {
         let left = pairs.next().unwrap().as_str().to_string();
         let mut rights = vec![];
         for pair in pairs {
-            rights.push(EvaluationRight::from(pair));
+            rights.push(EvaluationRight::try_from(pair)?);
         }
-        Evaluation { left, rights }
+        Ok(Evaluation { left, rights })
     }
 }
 
@@ -317,21 +346,23 @@ pub enum EvaluationRight {
     Access(String),
 }
 
-impl From<Pair<'_, Rule>> for EvaluationRight {
-    fn from(pair: Pair<Rule>) -> Self {
+impl TryFrom<Pair<'_, Rule>> for EvaluationRight {
+    type Error = failure::Error;
+
+    fn try_from(pair: Pair<Rule>) -> Result<Self, Self::Error> {
         use EvaluationRight::*;
         match pair.as_rule() {
-            Rule::calling => Call(
+            Rule::calling => Ok(Call(
                 pair.into_inner()
                     .next()
                     .unwrap()
                     .into_inner()
                     .next()
                     .unwrap()
-                    .into(),
-            ),
-            Rule::identify => Access(pair.as_str().to_string()),
-            _ => unreachable!("{:?}", pair),
+                    .try_into()?,
+            )),
+            Rule::identify => Ok(Access(pair.as_str().to_string())),
+            _ => Err(err_msg(format!("{:?}", pair))),
         }
     }
 }
@@ -373,19 +404,19 @@ fn test_parsing_string() {
 fn test_parsing_source_1() {
     let ast = "i";
     Parser::parse(Rule::source, ast).unwrap();
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
+    Source::try_from(Parser::parse(Rule::source, ast).unwrap()).unwrap();
 }
 
 #[test]
 fn test_parsing_source_2() {
     let ast = "1 + 2";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
+    Source::try_from(Parser::parse(Rule::source, ast).unwrap()).unwrap();
 }
 
 #[test]
 fn test_parsing_source_3() {
     let ast = "i: j";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
+    Source::try_from(Parser::parse(Rule::source, ast).unwrap()).unwrap();
 }
 
 #[test]
@@ -394,7 +425,7 @@ fn test_parsing_source_4() {
 j: 5,
 k: k + 1,
 i * (j + 3) + (j / i)";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
+    Source::try_from(Parser::parse(Rule::source, ast).unwrap()).unwrap();
 }
 
 #[test]
@@ -408,11 +439,11 @@ fn test_parsing_source_5() {
   fizz.concat(buzz)
 },
 Array.range({start: 1, end: 100}).map(fizzbuzz)";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
+    Source::try_from(Parser::parse(Rule::source, ast).unwrap()).unwrap();
 }
 
 #[test]
 fn test_parsing_source_6() {
     let ast = "i(1)";
-    Source::from(Parser::parse(Rule::source, ast).unwrap());
+    Source::try_from(Parser::parse(Rule::source, ast).unwrap()).unwrap();
 }
