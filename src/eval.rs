@@ -1,5 +1,5 @@
+use crate::{list, token, json, Env};
 use crate::types::{BoxedNative, Type};
-use crate::{list, token, Env};
 use std::cell::RefCell;
 use std::iter::IntoIterator;
 use std::rc::Rc;
@@ -11,6 +11,9 @@ pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
             evaluated: [(
                 "List".to_string(),
                 BoxedNative::new(list::ListModule).into(),
+            ), (
+                "Json".to_string(),
+                BoxedNative::new(json::JsonModule).into(),
             )]
             .iter()
             .cloned()

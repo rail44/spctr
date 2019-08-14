@@ -295,7 +295,7 @@ impl TryFrom<Pair<'_, Rule>> for Primary {
                     .try_into()?,
             ))),
             Rule::number => Ok(Primary::Number(pair.as_str().parse().unwrap())),
-            Rule::string => Ok(Primary::String(pair.as_str().to_string())),
+            Rule::string_literal => Ok(Primary::String(pair.into_inner().next().unwrap().as_str().replace("\\\"", "\"").to_string())),
             Rule::list => {
                 let mut expressions = vec![];
                 for member in pair.into_inner() {

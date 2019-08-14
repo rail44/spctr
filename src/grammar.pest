@@ -32,10 +32,8 @@ block = { "{" ~ (statement ~ (delimiter ~ statement)*)? ~ "}" }
 _if = { "if" ~ expression ~ expression ~ expression }
 literal = _{ number | string_literal }
 
-
-string_literal = _{ "\"" ~ string ~ "\"" }
-string = { char* }
-char = @{ (!"\"" ~ ANY) }
+string_literal = ${ "\"" ~ string  ~ "\"" }
+string = { (!"\"" ~ ("\\\"" | ANY | WHITESPACE))* }
 
 number = ${ ASCII_DIGIT+ }
 

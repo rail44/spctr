@@ -3,6 +3,7 @@ mod list;
 mod string;
 mod token;
 mod types;
+mod json;
 
 use eval::{eval_source, Evaluable};
 use std::cell::RefCell;
@@ -77,7 +78,9 @@ fn test_string_concat() {
 hoge: "hoge",
 hoge.concat("fuga")"#;
     let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, None) == Type::String("hogefuga".to_string()));
+    let result = eval_source(source, None);
+    println!("{}", result);
+    assert!(result == Type::String("hogefuga".to_string()));
 }
 
 #[test]
