@@ -46,6 +46,27 @@ fn main() -> Result<(), failure::Error> {
 }
 
 #[test]
+fn test_indexing_1() {
+    let ast = r#"[1, 3][1]"#;
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::Number(3.0));
+}
+
+#[test]
+fn test_indexing_2() {
+    let ast = r#"
+hoge: {
+    foo: "bar"
+},
+key: "foo",
+
+hoge[key]"#;
+
+    let source = Source::from_str(ast).unwrap();
+    assert!(eval_source(source, None) == Type::String("bar".to_string()));
+}
+
+#[test]
 fn test_call() {
     let ast = r#"
 hoge: (fuga) => {
