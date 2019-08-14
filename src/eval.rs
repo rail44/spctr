@@ -42,6 +42,11 @@ impl Evaluable for token::Expression {
         match self {
             Comparison(c) => c.eval(env),
             Function(arg_names, expression) => Type::Function(env.clone(), arg_names, expression),
+            If(cond, cons, alt) => match cond.eval(env) {
+                Type::Boolean(true) => cons.eval(env),
+                Type::Boolean(false) => alt.eval(env),
+                _ => panic!(),
+            },
         }
     }
 }
@@ -115,17 +120,52 @@ impl Evaluable for token::Multitive {
     }
 }
 
-impl Evaluable for token::Evaluation {
+impl Evaluable for token::Primary {
+    fn eval(mut self, env: &mut Env) -> Type {
+        let mut base = self.0.remove(0).eval(env);
+
+        for right in self.0 {
+            if let token::Atom::Indentify(accessor) = right.base {
+                base = base.get_prop(env, &accessor);
+
+                for right in right.rights {
+                    use token::PrimaryPartRight::*;
+                    match right {
+                        Indexing(arg) => {
+                            match arg.eval(env) {
+                                Type::String(s) => base = base.get_prop(env, &s),
+                                Type::Number(n) => base = base.indexing(env, n),
+                                _ => panic!()
+                            }
+                        }
+                        Calling(arg) => {
+                            base = base.call(&mut env.clone(), vec![arg.eval(env)]);
+                        }
+                    }
+                }
+                continue;
+            }
+            panic!();
+        }
+        base
+    }
+}
+
+impl Evaluable for token::PrimaryPart {
     fn eval(self, env: &mut Env) -> Type {
-        let mut base = env.get_value(&self.left);
+        let mut base = self.base.eval(env);
 
         for right in self.rights {
-            use token::EvaluationRight::*;
+            use token::PrimaryPartRight::*;
             match right {
-                Access(name) => {
-                    base = base.get_prop(env, &name);
+                Indexing(arg) => {
+                    match arg.eval(env) {
+                        Type::String(s) => base = base.get_prop(env, &s),
+                        Type::Number(n) => base = base.indexing(env, n),
+                        _ => panic!()
+                    }
                 }
-                Call(arg) => {
+                Calling(arg) => {
                     base = base.call(&mut env.clone(), vec![arg.eval(env)]);
                 }
             }
@@ -134,23 +174,18 @@ impl Evaluable for token::Evaluation {
     }
 }
 
-impl Evaluable for token::Primary {
+impl Evaluable for token::Atom {
     fn eval(self, env: &mut Env) -> Type {
-        use token::Primary::*;
+        use token::Atom::*;
         match self {
             Number(f) => Type::Number(f),
             String(s) => Type::String(s),
             Parenthesis(a) => a.eval(env),
             Block(s) => s.eval(env),
+            Indentify(s) => env.get_value(&s),
             List(v) => Type::List(list::List::new(
                 v.into_iter().map(|e| e.eval(env)).collect(),
             )),
-            Evaluation(e) => e.eval(env),
-            If(cond, cons, alt) => match cond.eval(env) {
-                Type::Boolean(true) => cons.eval(env),
-                Type::Boolean(false) => alt.eval(env),
-                _ => panic!(),
-            },
         }
     }
 }

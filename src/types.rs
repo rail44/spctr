@@ -116,6 +116,13 @@ impl Type {
         }
     }
 
+    pub fn indexing(&self, _env: &mut Env, n: f64) -> Type {
+        match self {
+            Type::List(l) => l.indexing(n),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn call(self, env: &mut Env, args: Vec<Type>) -> Type {
         match self {
             Type::Function(inner_env, arg_names, expression) => {

@@ -9,6 +9,10 @@ impl List {
     pub fn new(v: Vec<Type>) -> Self {
         List(v)
     }
+
+    pub fn indexing(&self, n: f64) -> Type {
+        self.0[n as usize].clone()
+    }
 }
 
 impl std::fmt::Display for List {
