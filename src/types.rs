@@ -101,11 +101,12 @@ pub enum Type {
     Number(f64),
     String(String),
     List(list::List),
-    Map(HashMap<String, token::Expression>),
-    Function(Env, Vec<String>, Box<token::Expression>),
+    Map(HashMap<String, Type>),
+    Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
     Native(BoxedNative),
     NativeCallable(BoxedNativeCallable),
+    Unevaluated(token::Expression),
 }
 
 impl Type {
@@ -114,7 +115,6 @@ impl Type {
             Type::Map(map) => {
                 let mut child = Env {
                     binds: map.clone(),
-                    evaluated: HashMap::new(),
                     parent: Some(Rc::new(RefCell::new(env.clone()))),
                 };
                 child.get_value(name)
@@ -143,19 +143,25 @@ impl Type {
     pub fn call(self, env: &mut Env, args: Vec<Type>) -> Type {
         match self {
             Type::Function(inner_env, arg_names, expression) => {
-                let mut evaluated = HashMap::new();
+                let mut binds = HashMap::new();
                 for (v, n) in args.into_iter().zip(arg_names.iter()) {
-                    evaluated.insert(n.clone(), v);
+                    binds.insert(n.clone(), v);
                 }
                 let mut env = Env {
-                    binds: HashMap::new(),
-                    evaluated,
+                    binds,
                     parent: Some(Rc::new(RefCell::new(inner_env))),
                 };
                 expression.eval(&mut env)
             }
             Type::NativeCallable(n) => n.call(env, args),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn eval(self, env: &mut Env) -> Type {
+        match self {
+            Type::Unevaluated(expression) => expression.eval(env),
+            _ => self,
         }
     }
 }
@@ -171,6 +177,7 @@ impl std::fmt::Display for Type {
             Type::Boolean(b) => write!(formatter, "{}", b),
             Type::Native(n) => write!(formatter, "[Native {}]", n.0),
             Type::NativeCallable(n) => write!(formatter, "[NativeCallable {}]", n.0),
+            Type::Unevaluated(expression) => write!(formatter, "[Unevaluated {:?}]", expression),
         }
     }
 }

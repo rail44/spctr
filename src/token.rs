@@ -79,7 +79,7 @@ impl TryFrom<Pair<'_, Rule>> for Expression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
-    pub binds: HashMap<String, Expression>,
+    pub binds: HashMap<String, crate::Type>,
     pub expressions: Vec<Expression>,
 }
 
@@ -107,7 +107,7 @@ impl TryFrom<Pairs<'_, Rule>> for Source {
                         .next()
                         .unwrap()
                         .try_into()?;
-                    binds.insert(name.to_string(), expression);
+                    binds.insert(name.to_string(), crate::Type::Unevaluated(expression));
                 }
                 Rule::expression => {
                     expressions.push(Expression::try_from(pair.into_inner().next().unwrap())?)

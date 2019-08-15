@@ -6,21 +6,17 @@ use std::rc::Rc;
 
 pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {
+        source.binds.insert(
+            "List".to_string(),
+            BoxedNative::new(list::ListModule).into(),
+        );
+        source.binds.insert(
+            "Json".to_string(),
+            BoxedNative::new(json::JsonModule).into(),
+        );
+
         let mut env = Env {
             binds: source.binds,
-            evaluated: [
-                (
-                    "List".to_string(),
-                    BoxedNative::new(list::ListModule).into(),
-                ),
-                (
-                    "Json".to_string(),
-                    BoxedNative::new(json::JsonModule).into(),
-                ),
-            ]
-            .iter()
-            .cloned()
-            .collect(),
             parent: env.map(|e| Rc::new(RefCell::new(e.clone()))),
         };
         return expression.eval(&mut env);
@@ -44,7 +40,11 @@ impl Evaluable for token::Expression {
         use token::Expression::*;
         match self {
             Comparison(c) => c.eval(env),
-            Function(arg_names, expression) => Type::Function(env.clone(), arg_names, expression),
+            Function(arg_names, expression) => Type::Function(
+                env.clone(),
+                arg_names,
+                Box::new(Type::Unevaluated(*expression)),
+            ),
             If(cond, cons, alt) => match cond.eval(env) {
                 Type::Boolean(true) => cons.eval(env),
                 Type::Boolean(false) => alt.eval(env),

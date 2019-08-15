@@ -6,7 +6,7 @@ mod token;
 mod types;
 
 use clap::{App, Arg};
-use eval::{eval_source, Evaluable};
+use eval::eval_source;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::stdin;
@@ -18,20 +18,15 @@ use types::Type;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Env {
-    binds: HashMap<String, token::Expression>,
-    evaluated: HashMap<String, Type>,
+    binds: HashMap<String, Type>,
     parent: Option<Rc<RefCell<Env>>>,
 }
 
 impl Env {
     fn get_value(&mut self, name: &str) -> Type {
-        if let Some(evaluated) = self.evaluated.get(name) {
-            return evaluated.clone();
-        }
-
         if let Some(binded) = self.binds.remove(name) {
             let value = binded.eval(self);
-            self.evaluated.insert(name.to_string(), value.clone());
+            self.binds.insert(name.to_string(), value.clone());
             return value;
         }
         self.parent.as_ref().unwrap().borrow_mut().get_value(name)
