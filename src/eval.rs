@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::iter::IntoIterator;
 use std::rc::Rc;
 
-pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
+pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
     if let Some(expression) = source.expressions.pop() {
         source
             .binds
@@ -15,17 +15,17 @@ pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
 
         let mut env = Env {
             binds: source.binds,
-            parent: env.map(|e| Rc::new(RefCell::new(e.clone()))),
+            parent: Some(Rc::new(RefCell::new(env.clone()))),
         };
         return expression.eval(&mut env);
     }
 
-    Type::Map(source.binds)
+    Type::Map(env.clone(), source.binds)
 }
 
 impl Evaluable for token::Source {
     fn eval(self, env: &mut Env) -> Type {
-        eval_source(self, Some(env))
+        eval_source(self, env)
     }
 }
 

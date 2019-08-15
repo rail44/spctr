@@ -54,7 +54,7 @@ pub enum Type {
     Number(f64),
     String(String),
     List(list::List),
-    Map(HashMap<String, Type>),
+    Map(Env, HashMap<String, Type>),
     Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
     NativeCallable(BoxedNativeCallable),
@@ -63,9 +63,9 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn get_prop(&self, env: &mut Env, name: &str) -> Type {
+    pub fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
         match self {
-            Type::Map(map) => {
+            Type::Map(env, map) => {
                 let mut child = Env {
                     binds: map.clone(),
                     parent: Some(Rc::new(RefCell::new(env.clone()))),
@@ -122,7 +122,7 @@ impl std::fmt::Display for Type {
         match self {
             Type::Number(f) => write!(formatter, "{}", f),
             Type::String(s) => write!(formatter, "\"{}\"", s),
-            Type::Map(m) => write!(formatter, "{:?}", m),
+            Type::Map(_env, m) => write!(formatter, "{:?}", m),
             Type::List(l) => write!(formatter, "{}", l),
             Type::Function(_, _, _) => write!(formatter, "[function]"),
             Type::Boolean(b) => write!(formatter, "{}", b),

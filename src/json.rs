@@ -10,6 +10,7 @@ pub struct JsonModule;
 impl JsonModule {
     pub fn new() -> Type {
         Type::Map(
+            Default::default(),
             [("parse".to_string(), BoxedNativeCallable::new(Parse).into())]
                 .iter()
                 .cloned()
@@ -30,7 +31,7 @@ pub struct Parse;
 impl NativeCallable for Parse {
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
         if let Type::String(s) = args.pop().unwrap() {
-            return eval_source(Source::from_str(&s).unwrap(), Some(env));
+            return eval_source(Source::from_str(&s).unwrap(), env);
         }
         panic!();
     }
@@ -55,7 +56,7 @@ json: Json.parse(json_string),
 json.hoge[2]"#;
 
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, None);
+    let result = eval_source(source, &mut Default::default());
     println!("{}", result);
     assert!(result == Type::Null);
 }

@@ -32,6 +32,7 @@ pub struct ListModule;
 impl ListModule {
     pub fn new() -> Type {
         Type::Map(
+            Default::default(),
             [("range".to_string(), BoxedNativeCallable::new(Range).into())]
                 .iter()
                 .cloned()
