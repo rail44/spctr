@@ -1,4 +1,4 @@
-use crate::types::{BoxedNativeCallable, BoxedNative, Native, NativeCallable, Type};
+use crate::types::{BoxedNative, BoxedNativeCallable, Native, NativeCallable, Type};
 use crate::Env;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,7 +68,6 @@ impl NativeCallable for Parse {
     fn box_clone(&self) -> Box<dyn NativeCallable> {
         Box::new(self.clone())
     }
-    
 }
 
 impl std::fmt::Display for Parse {
@@ -76,4 +75,3 @@ impl std::fmt::Display for Parse {
         write!(f, "Json.parse")
     }
 }
-

@@ -1,5 +1,5 @@
-use crate::{list, token, json, Env};
 use crate::types::{BoxedNative, Type};
+use crate::{json, list, token, Env};
 use std::cell::RefCell;
 use std::iter::IntoIterator;
 use std::rc::Rc;
@@ -8,13 +8,16 @@ pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {
         let mut env = Env {
             binds: source.binds,
-            evaluated: [(
-                "List".to_string(),
-                BoxedNative::new(list::ListModule).into(),
-            ), (
-                "Json".to_string(),
-                BoxedNative::new(json::JsonModule).into(),
-            )]
+            evaluated: [
+                (
+                    "List".to_string(),
+                    BoxedNative::new(list::ListModule).into(),
+                ),
+                (
+                    "Json".to_string(),
+                    BoxedNative::new(json::JsonModule).into(),
+                ),
+            ]
             .iter()
             .cloned()
             .collect(),
@@ -131,13 +134,11 @@ impl Evaluable for token::Primary {
                 for right in right.rights {
                     use token::PrimaryPartRight::*;
                     match right {
-                        Indexing(arg) => {
-                            match arg.eval(env) {
-                                Type::String(s) => base = base.get_prop(env, &s),
-                                Type::Number(n) => base = base.indexing(env, n),
-                                _ => panic!()
-                            }
-                        }
+                        Indexing(arg) => match arg.eval(env) {
+                            Type::String(s) => base = base.get_prop(env, &s),
+                            Type::Number(n) => base = base.indexing(env, n),
+                            _ => panic!(),
+                        },
                         Calling(arg) => {
                             base = base.call(&mut env.clone(), vec![arg.eval(env)]);
                         }
@@ -158,13 +159,11 @@ impl Evaluable for token::PrimaryPart {
         for right in self.rights {
             use token::PrimaryPartRight::*;
             match right {
-                Indexing(arg) => {
-                    match arg.eval(env) {
-                        Type::String(s) => base = base.get_prop(env, &s),
-                        Type::Number(n) => base = base.indexing(env, n),
-                        _ => panic!()
-                    }
-                }
+                Indexing(arg) => match arg.eval(env) {
+                    Type::String(s) => base = base.get_prop(env, &s),
+                    Type::Number(n) => base = base.indexing(env, n),
+                    _ => panic!(),
+                },
                 Calling(arg) => {
                     base = base.call(&mut env.clone(), vec![arg.eval(env)]);
                 }

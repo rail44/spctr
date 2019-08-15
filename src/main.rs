@@ -1,20 +1,20 @@
 mod eval;
+mod json;
 mod list;
 mod string;
 mod token;
 mod types;
-mod json;
 
+use clap::{App, Arg};
 use eval::{eval_source, Evaluable};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{BufReader, Read};
 use std::io::stdin;
+use std::io::Read;
 use std::rc::Rc;
 use std::str::FromStr;
 use token::Source;
 use types::Type;
-use clap::{Arg, App, SubCommand};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Env {
@@ -40,12 +40,8 @@ impl Env {
 
 fn main() -> Result<(), failure::Error> {
     let matches = App::new("spctr")
-        .arg(Arg::with_name("INPUT")
-             .required(true)
-             .index(1))
-        .arg(Arg::with_name("use_stdin")
-             .short("i")
-             .takes_value(false))
+        .arg(Arg::with_name("INPUT").required(true).index(1))
+        .arg(Arg::with_name("use_stdin").short("i").takes_value(false))
         .get_matches();
 
     let input = matches.value_of("INPUT").unwrap();
@@ -55,8 +51,11 @@ fn main() -> Result<(), failure::Error> {
         let mut s = String::new();
         stdin().read_to_string(&mut s)?;
 
-        println!("{}", eval_source(source, None).call(&mut Default::default(), vec![Type::String(s)]));
-        return Ok(())
+        println!(
+            "{}",
+            eval_source(source, None).call(&mut Default::default(), vec![Type::String(s)])
+        );
+        return Ok(());
     }
 
     println!("{}", eval_source(source, None));

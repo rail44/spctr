@@ -321,7 +321,7 @@ impl TryFrom<Pairs<'_, Rule>> for Primary {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrimaryPart {
     pub base: Atom,
-    pub rights: Vec<PrimaryPartRight>
+    pub rights: Vec<PrimaryPartRight>,
 }
 
 impl TryFrom<Pairs<'_, Rule>> for PrimaryPart {
@@ -351,8 +351,22 @@ impl TryFrom<Pair<'_, Rule>> for PrimaryPartRight {
 
     fn try_from(pair: Pair<'_, Rule>) -> Result<Self, Self::Error> {
         Ok(match pair.as_rule() {
-            Rule::calling => PrimaryPartRight::Calling(Expression::try_from(pair.into_inner().next().unwrap().into_inner().next().unwrap())?),
-            Rule::indexing => PrimaryPartRight::Indexing(Expression::try_from(pair.into_inner().next().unwrap().into_inner().next().unwrap())?),
+            Rule::calling => PrimaryPartRight::Calling(Expression::try_from(
+                pair.into_inner()
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .next()
+                    .unwrap(),
+            )?),
+            Rule::indexing => PrimaryPartRight::Indexing(Expression::try_from(
+                pair.into_inner()
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .next()
+                    .unwrap(),
+            )?),
             _ => return Err(err_msg(format!("{:?}", pair))),
         })
     }
@@ -383,7 +397,14 @@ impl TryFrom<Pair<'_, Rule>> for Atom {
                     .try_into()?,
             ))),
             Rule::number => Ok(Atom::Number(pair.as_str().parse().unwrap())),
-            Rule::string_literal => Ok(Atom::String(pair.into_inner().next().unwrap().as_str().replace("\\\"", "\"").to_string())),
+            Rule::string_literal => Ok(Atom::String(
+                pair.into_inner()
+                    .next()
+                    .unwrap()
+                    .as_str()
+                    .replace("\\\"", "\"")
+                    .to_string(),
+            )),
             Rule::list => {
                 let mut expressions = vec![];
                 for member in pair.into_inner() {
@@ -391,9 +412,7 @@ impl TryFrom<Pair<'_, Rule>> for Atom {
                 }
                 Ok(Atom::List(expressions))
             }
-            Rule::block => Ok(Atom::Block(Box::new(Source::try_from(
-                pair.into_inner(),
-            )?))),
+            Rule::block => Ok(Atom::Block(Box::new(Source::try_from(pair.into_inner())?))),
             Rule::identify => Ok(Atom::Indentify(pair.as_str().to_string())),
             _ => Err(err_msg(format!("{:?}", pair))),
         }

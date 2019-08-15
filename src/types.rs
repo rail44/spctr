@@ -20,11 +20,11 @@ impl BoxedNative {
 }
 
 pub trait Native: 'static + Debug + Display {
-    fn get_prop(&self, env: &mut Env, name: &str) -> Type {
+    fn get_prop(&self, _env: &mut Env, _name: &str) -> Type {
         unimplemented!()
     }
 
-    fn indexing(&self, env: &mut Env, name: &str) -> Type {
+    fn indexing(&self, _env: &mut Env, _name: &str) -> Type {
         unimplemented!()
     }
 
@@ -67,7 +67,7 @@ impl BoxedNativeCallable {
 }
 
 pub trait NativeCallable: 'static + Debug + Display {
-    fn call(&self, env: &mut Env, args: Vec<Type>) -> Type {
+    fn call(&self, _env: &mut Env, _args: Vec<Type>) -> Type {
         unimplemented!()
     }
 
