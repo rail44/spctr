@@ -15,9 +15,21 @@ impl Native for Json {
         Type::String(self.0.to_string())
     }
 
+    fn indexing(&self, _env: &mut Env, i: i32) -> Type {
+        use serde_json::Value;
+        match self.0.get(i as usize).unwrap() {
+            Value::String(s) => Type::String(s.clone()),
+            Value::Number(n) => Type::Number(n.as_f64().unwrap()),
+            v => BoxedNative::new(Self(v.clone())).into(),
+        }
+    }
+
     fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
-        match name {
-            _ => unreachable!(),
+        use serde_json::Value;
+        match self.0.get(name).unwrap() {
+            Value::String(s) => Type::String(s.clone()),
+            Value::Number(n) => Type::Number(n.as_f64().unwrap()),
+            v => BoxedNative::new(Self(v.clone())).into(),
         }
     }
 

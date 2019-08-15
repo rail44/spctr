@@ -136,7 +136,7 @@ impl Evaluable for token::Primary {
                     match right {
                         Indexing(arg) => match arg.eval(env) {
                             Type::String(s) => base = base.get_prop(env, &s),
-                            Type::Number(n) => base = base.indexing(env, n),
+                            Type::Number(n) => base = base.indexing(env, n as i32),
                             _ => panic!(),
                         },
                         Calling(arg) => {
@@ -161,7 +161,7 @@ impl Evaluable for token::PrimaryPart {
             match right {
                 Indexing(arg) => match arg.eval(env) {
                     Type::String(s) => base = base.get_prop(env, &s),
-                    Type::Number(n) => base = base.indexing(env, n),
+                    Type::Number(n) => base = base.indexing(env, n as i32),
                     _ => panic!(),
                 },
                 Calling(arg) => {

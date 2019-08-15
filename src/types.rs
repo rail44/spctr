@@ -24,7 +24,7 @@ pub trait Native: 'static + Debug + Display {
         unimplemented!()
     }
 
-    fn indexing(&self, _env: &mut Env, _name: &str) -> Type {
+    fn indexing(&self, _env: &mut Env, _i: i32) -> Type {
         unimplemented!()
     }
 
@@ -132,9 +132,10 @@ impl Type {
         }
     }
 
-    pub fn indexing(&self, _env: &mut Env, n: f64) -> Type {
+    pub fn indexing(&self, env: &mut Env, n: i32) -> Type {
         match self {
             Type::List(l) => l.indexing(n),
+            Type::Native(native) => native.0.indexing(env, n),
             _ => unreachable!(),
         }
     }

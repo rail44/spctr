@@ -10,7 +10,7 @@ impl List {
         List(v)
     }
 
-    pub fn indexing(&self, n: f64) -> Type {
+    pub fn indexing(&self, n: i32) -> Type {
         self.0[n as usize].clone()
     }
 }
