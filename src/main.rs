@@ -8,13 +8,15 @@ mod json;
 use eval::{eval_source, Evaluable};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{stdin, BufReader, Read};
+use std::io::{BufReader, Read};
+use std::io::stdin;
 use std::rc::Rc;
 use std::str::FromStr;
 use token::Source;
 use types::Type;
+use clap::{Arg, App, SubCommand};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Env {
     binds: HashMap<String, token::Expression>,
     evaluated: HashMap<String, Type>,
@@ -37,10 +39,26 @@ impl Env {
 }
 
 fn main() -> Result<(), failure::Error> {
-    let mut s = String::new();
-    BufReader::new(stdin()).read_to_string(&mut s)?;
+    let matches = App::new("spctr")
+        .arg(Arg::with_name("INPUT")
+             .required(true)
+             .index(1))
+        .arg(Arg::with_name("use_stdin")
+             .short("i")
+             .takes_value(false))
+        .get_matches();
 
-    let source = Source::from_str(&s).unwrap();
+    let input = matches.value_of("INPUT").unwrap();
+    let source = Source::from_str(input).unwrap();
+
+    if matches.is_present("use_stdin") {
+        let mut s = String::new();
+        stdin().read_to_string(&mut s)?;
+
+        println!("{}", eval_source(source, None).call(&mut Default::default(), vec![Type::String(s)]));
+        return Ok(())
+    }
+
     println!("{}", eval_source(source, None));
     Ok(())
 }
