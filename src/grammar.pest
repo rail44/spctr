@@ -6,7 +6,7 @@ statement = _{ bind | expression }
 expression = { function | _if | comparison }
 function = { "(" ~ identify ~ ("," ~ identify)* ~ ")" ~ "=>" ~ expression }
 
-bind = { identify ~ ":" ~ expression }
+bind = { (identify | string_literal) ~ ":" ~ expression }
 
 comparison = { additive ~ (equal | not_equal)* }
 equal = { "=" ~  additive }
@@ -29,10 +29,12 @@ calling = { "(" ~ expression ~ ")" }
 indexing = { "[" ~ expression ~ "]" }
 
 atom = _{
-  "(" ~ parenthesis ~ ")" | block | list | literal | identify
+  "(" ~ parenthesis ~ ")" | block | list | literal | null | identify
 }
 
 identify = ${ (ASCII_ALPHA | "_")+ }
+
+null = { "null" }
 
 parenthesis = { expression }
 
