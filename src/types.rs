@@ -7,53 +7,6 @@ use std::fmt::{Debug, Display};
 use std::rc::Rc;
 
 #[derive(Debug)]
-pub struct BoxedNative(Box<dyn Native>);
-
-impl BoxedNative {
-    pub fn new<N: Native>(n: N) -> Self {
-        BoxedNative(Box::new(n))
-    }
-
-    pub fn get_prop(&self, env: &mut Env, name: &str) -> Type {
-        self.0.get_prop(env, name)
-    }
-}
-
-pub trait Native: 'static + Debug + Display {
-    fn get_prop(&self, _env: &mut Env, _name: &str) -> Type {
-        unimplemented!()
-    }
-
-    fn indexing(&self, _env: &mut Env, _i: i32) -> Type {
-        unimplemented!()
-    }
-
-    fn comparator(&self) -> Type {
-        Type::Number(0.0)
-    }
-
-    fn box_clone(&self) -> Box<dyn Native>;
-}
-
-impl Clone for BoxedNative {
-    fn clone(&self) -> Self {
-        BoxedNative(self.0.box_clone())
-    }
-}
-
-impl From<BoxedNative> for Type {
-    fn from(n: BoxedNative) -> Type {
-        Type::Native(n)
-    }
-}
-
-impl PartialEq for BoxedNative {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.type_id() == other.0.type_id() && self.0.comparator() == other.0.comparator()
-    }
-}
-
-#[derive(Debug)]
 pub struct BoxedNativeCallable(Box<dyn NativeCallable>);
 
 impl BoxedNativeCallable {
@@ -104,7 +57,6 @@ pub enum Type {
     Map(HashMap<String, Type>),
     Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
-    Native(BoxedNative),
     NativeCallable(BoxedNativeCallable),
     Unevaluated(token::Expression),
     Null,
@@ -128,15 +80,13 @@ impl Type {
                 "concat" => BoxedNativeCallable::new(string::Concat::new(s.clone())).into(),
                 _ => panic!(),
             },
-            Type::Native(n) => n.get_prop(env, name),
             _ => unreachable!(),
         }
     }
 
-    pub fn indexing(&self, env: &mut Env, n: i32) -> Type {
+    pub fn indexing(&self, n: i32) -> Type {
         match self {
             Type::List(l) => l.indexing(n),
-            Type::Native(native) => native.0.indexing(env, n),
             _ => unreachable!(),
         }
     }
@@ -176,7 +126,6 @@ impl std::fmt::Display for Type {
             Type::List(l) => write!(formatter, "{}", l),
             Type::Function(_, _, _) => write!(formatter, "[function]"),
             Type::Boolean(b) => write!(formatter, "{}", b),
-            Type::Native(n) => write!(formatter, "[Native {}]", n.0),
             Type::NativeCallable(n) => write!(formatter, "[NativeCallable {}]", n.0),
             Type::Unevaluated(expression) => write!(formatter, "[Unevaluated {:?}]", expression),
             Type::Null => write!(formatter, "null"),

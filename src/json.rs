@@ -1,5 +1,5 @@
-use crate::types::{BoxedNative, BoxedNativeCallable, Native, NativeCallable, Type};
 use crate::list;
+use crate::types::{BoxedNativeCallable, NativeCallable, Type};
 use crate::Env;
 
 fn into_value(j: serde_json::Value) -> Type {
@@ -7,7 +7,9 @@ fn into_value(j: serde_json::Value) -> Type {
     match j {
         Value::String(s) => Type::String(s.clone()),
         Value::Number(n) => Type::Number(n.as_f64().unwrap()),
-        Value::Array(v) => Type::List(list::List::new(v.into_iter().map(|e| into_value(e)).collect())),
+        Value::Array(v) => Type::List(list::List::new(
+            v.into_iter().map(|e| into_value(e)).collect(),
+        )),
         Value::Object(m) => Type::Map(m.into_iter().map(|(k, v)| (k, into_value(v))).collect()),
         Value::Bool(b) => Type::Boolean(b),
         Value::Null => Type::Null,
@@ -20,7 +22,10 @@ pub struct JsonModule;
 impl JsonModule {
     pub fn new() -> Type {
         Type::Map(
-            [("parse".to_string(), BoxedNativeCallable::new(Parse).into())].iter().cloned().collect()
+            [("parse".to_string(), BoxedNativeCallable::new(Parse).into())]
+                .iter()
+                .cloned()
+                .collect(),
         )
     }
 }

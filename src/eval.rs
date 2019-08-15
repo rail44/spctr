@@ -6,14 +6,12 @@ use std::rc::Rc;
 
 pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {
-        source.binds.insert(
-            "List".to_string(),
-            list::ListModule::new()
-        );
-        source.binds.insert(
-            "Json".to_string(),
-            json::JsonModule::new()
-        );
+        source
+            .binds
+            .insert("List".to_string(), list::ListModule::new());
+        source
+            .binds
+            .insert("Json".to_string(), json::JsonModule::new());
 
         let mut env = Env {
             binds: source.binds,
@@ -136,7 +134,7 @@ impl Evaluable for token::Primary {
                     match right {
                         Indexing(arg) => match arg.eval(env) {
                             Type::String(s) => base = base.get_prop(env, &s),
-                            Type::Number(n) => base = base.indexing(env, n as i32),
+                            Type::Number(n) => base = base.indexing(n as i32),
                             _ => panic!(),
                         },
                         Calling(arg) => {
@@ -161,7 +159,7 @@ impl Evaluable for token::PrimaryPart {
             match right {
                 Indexing(arg) => match arg.eval(env) {
                     Type::String(s) => base = base.get_prop(env, &s),
-                    Type::Number(n) => base = base.indexing(env, n as i32),
+                    Type::Number(n) => base = base.indexing(n as i32),
                     _ => panic!(),
                 },
                 Calling(arg) => {

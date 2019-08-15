@@ -1,4 +1,4 @@
-use crate::types::{BoxedNativeCallable, Native, NativeCallable, Type};
+use crate::types::{BoxedNativeCallable, NativeCallable, Type};
 use crate::Env;
 use std::iter::Iterator;
 
@@ -32,9 +32,10 @@ pub struct ListModule;
 impl ListModule {
     pub fn new() -> Type {
         Type::Map(
-            [
-                ("range".to_string(), BoxedNativeCallable::new(Range).into())
-            ].iter().cloned().collect()
+            [("range".to_string(), BoxedNativeCallable::new(Range).into())]
+                .iter()
+                .cloned()
+                .collect(),
         )
     }
 }
