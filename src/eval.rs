@@ -1,4 +1,4 @@
-use crate::types::{BoxedNative, Type};
+use crate::types::Type;
 use crate::{json, list, token, Env};
 use std::cell::RefCell;
 use std::iter::IntoIterator;
@@ -8,11 +8,11 @@ pub fn eval_source(mut source: token::Source, env: Option<&mut Env>) -> Type {
     if let Some(expression) = source.expressions.pop() {
         source.binds.insert(
             "List".to_string(),
-            BoxedNative::new(list::ListModule).into(),
+            list::ListModule::new()
         );
         source.binds.insert(
             "Json".to_string(),
-            BoxedNative::new(json::JsonModule).into(),
+            json::JsonModule::new()
         );
 
         let mut env = Env {

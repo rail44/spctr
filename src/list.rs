@@ -29,22 +29,13 @@ impl std::fmt::Display for List {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListModule;
 
-impl Native for ListModule {
-    fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
-        match name {
-            "range" => BoxedNativeCallable::new(Range).into(),
-            _ => unreachable!(),
-        }
-    }
-
-    fn box_clone(&self) -> Box<dyn Native> {
-        Box::new(self.clone())
-    }
-}
-
-impl std::fmt::Display for ListModule {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "ListModule")
+impl ListModule {
+    pub fn new() -> Type {
+        Type::Map(
+            [
+                ("range".to_string(), BoxedNativeCallable::new(Range).into())
+            ].iter().cloned().collect()
+        )
     }
 }
 

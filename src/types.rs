@@ -107,6 +107,7 @@ pub enum Type {
     Native(BoxedNative),
     NativeCallable(BoxedNativeCallable),
     Unevaluated(token::Expression),
+    Null,
 }
 
 impl Type {
@@ -178,6 +179,7 @@ impl std::fmt::Display for Type {
             Type::Native(n) => write!(formatter, "[Native {}]", n.0),
             Type::NativeCallable(n) => write!(formatter, "[NativeCallable {}]", n.0),
             Type::Unevaluated(expression) => write!(formatter, "[Unevaluated {:?}]", expression),
+            Type::Null => write!(formatter, "null"),
         }
     }
 }
