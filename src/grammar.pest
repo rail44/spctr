@@ -1,4 +1,6 @@
 WHITESPACE = _{ " " | NEWLINE }
+COMMENT = _{ "#" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
+
 delimiter = _{ "," }
 source = _{ SOI ~ (statement ~ (delimiter ~ statement)*)? ~ &EOI }
 
