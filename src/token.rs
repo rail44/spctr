@@ -99,7 +99,12 @@ impl TryFrom<Pairs<'_, Rule>> for Source {
             match pair.as_rule() {
                 Rule::bind => {
                     let mut inner = pair.into_inner();
-                    let name = inner.next().unwrap().as_str();
+                    let ident = inner.next().unwrap();
+                    let name = match ident.as_rule() {
+                        Rule::identify => ident.as_str(),
+                        Rule::string_literal => ident.into_inner().next().unwrap().as_str(),
+                        _ => panic!()
+                    };
                     let expression = inner
                         .next()
                         .unwrap()
@@ -380,6 +385,7 @@ pub enum Atom {
     Block(Box<Source>),
     List(Vec<Expression>),
     Indentify(String),
+    Null,
 }
 
 impl TryFrom<Pair<'_, Rule>> for Atom {
@@ -412,6 +418,7 @@ impl TryFrom<Pair<'_, Rule>> for Atom {
                 }
                 Ok(Atom::List(expressions))
             }
+            Rule::null => Ok(Atom::Null),
             Rule::block => Ok(Atom::Block(Box::new(Source::try_from(pair.into_inner())?))),
             Rule::identify => Ok(Atom::Indentify(pair.as_str().to_string())),
             _ => Err(err_msg(format!("{:?}", pair))),

@@ -1,20 +1,8 @@
-use crate::list;
 use crate::types::{BoxedNativeCallable, NativeCallable, Type};
 use crate::Env;
-
-fn into_value(j: serde_json::Value) -> Type {
-    use serde_json::Value;
-    match j {
-        Value::String(s) => Type::String(s.clone()),
-        Value::Number(n) => Type::Number(n.as_f64().unwrap()),
-        Value::Array(v) => Type::List(list::List::new(
-            v.into_iter().map(|e| into_value(e)).collect(),
-        )),
-        Value::Object(m) => Type::Map(m.into_iter().map(|(k, v)| (k, into_value(v))).collect()),
-        Value::Bool(b) => Type::Boolean(b),
-        Value::Null => Type::Null,
-    }
-}
+use crate::token::{Source};
+use crate::eval::{eval_source};
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JsonModule;
@@ -40,9 +28,9 @@ impl std::fmt::Display for JsonModule {
 pub struct Parse;
 
 impl NativeCallable for Parse {
-    fn call(&self, _env: &mut Env, mut args: Vec<Type>) -> Type {
+    fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
         if let Type::String(s) = args.pop().unwrap() {
-            return into_value(serde_json::from_str(&s).unwrap());
+            return eval_source(Source::from_str(&s).unwrap(), Some(env));
         }
         panic!();
     }
@@ -56,4 +44,18 @@ impl std::fmt::Display for Parse {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Json.parse")
     }
+}
+
+
+#[test]
+fn test_access_json() {
+    let ast = r#"
+json_string: "{\"hoge\": [1, 2, null]}",
+json: Json.parse(json_string),
+json.hoge[2]"#;
+
+    let source = Source::from_str(ast).unwrap();
+    let result = eval_source(source, None);
+    println!("{}", result);
+    assert!(result == Type::Null);
 }

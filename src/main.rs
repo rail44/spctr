@@ -29,6 +29,7 @@ impl Env {
             self.binds.insert(name.to_string(), value.clone());
             return value;
         }
+        dbg!(name);
         self.parent.as_ref().unwrap().borrow_mut().get_value(name)
     }
 }

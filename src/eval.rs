@@ -179,6 +179,7 @@ impl Evaluable for token::Atom {
             String(s) => Type::String(s),
             Parenthesis(a) => a.eval(env),
             Block(s) => s.eval(env),
+            Null => Type::Null,
             Indentify(s) => env.get_value(&s),
             List(v) => Type::List(list::List::new(
                 v.into_iter().map(|e| e.eval(env)).collect(),
