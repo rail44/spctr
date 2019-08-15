@@ -11,8 +11,8 @@ impl Json {
 }
 
 impl Native for Json {
-    fn comparator(&self) -> &str {
-        ""
+    fn comparator(&self) -> Type {
+        Type::String(self.0.to_string())
     }
 
     fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
@@ -36,10 +36,6 @@ impl std::fmt::Display for Json {
 pub struct JsonModule;
 
 impl Native for JsonModule {
-    fn comparator(&self) -> &str {
-        ""
-    }
-
     fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
         match name {
             "parse" => BoxedNativeCallable::new(Parse).into(),
@@ -62,10 +58,6 @@ impl std::fmt::Display for JsonModule {
 pub struct Parse;
 
 impl NativeCallable for Parse {
-    fn comparator(&self) -> &str {
-        ""
-    }
-
     fn call(&self, _env: &mut Env, mut args: Vec<Type>) -> Type {
         if let Type::String(s) = args.pop().unwrap() {
             return BoxedNative::new(Json::new(serde_json::from_str(&s).unwrap())).into();

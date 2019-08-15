@@ -20,8 +20,18 @@ impl BoxedNative {
 }
 
 pub trait Native: 'static + Debug + Display {
-    fn get_prop(&self, env: &mut Env, name: &str) -> Type;
-    fn comparator(&self) -> &str;
+    fn get_prop(&self, env: &mut Env, name: &str) -> Type {
+        unimplemented!()
+    }
+
+    fn indexing(&self, env: &mut Env, name: &str) -> Type {
+        unimplemented!()
+    }
+
+    fn comparator(&self) -> Type {
+        Type::Number(0.0)
+    }
+
     fn box_clone(&self) -> Box<dyn Native>;
 }
 
@@ -57,8 +67,14 @@ impl BoxedNativeCallable {
 }
 
 pub trait NativeCallable: 'static + Debug + Display {
-    fn call(&self, env: &mut Env, args: Vec<Type>) -> Type;
-    fn comparator(&self) -> &str;
+    fn call(&self, env: &mut Env, args: Vec<Type>) -> Type {
+        unimplemented!()
+    }
+
+    fn comparator(&self) -> Type {
+        Type::Number(0.0)
+    }
+
     fn box_clone(&self) -> Box<dyn NativeCallable>;
 }
 

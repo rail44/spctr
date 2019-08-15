@@ -11,8 +11,8 @@ impl Concat {
 }
 
 impl NativeCallable for Concat {
-    fn comparator(&self) -> &str {
-        &self.0
+    fn comparator(&self) -> Type {
+        Type::String(self.0.clone())
     }
 
     fn call(&self, _env: &mut Env, mut args: Vec<Type>) -> Type {

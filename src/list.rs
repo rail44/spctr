@@ -30,10 +30,6 @@ impl std::fmt::Display for List {
 pub struct ListModule;
 
 impl Native for ListModule {
-    fn comparator(&self) -> &str {
-        ""
-    }
-
     fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
         match name {
             "range" => BoxedNativeCallable::new(Range).into(),
@@ -56,10 +52,6 @@ impl std::fmt::Display for ListModule {
 pub struct Range;
 
 impl NativeCallable for Range {
-    fn comparator(&self) -> &str {
-        ""
-    }
-
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
         let arg = args.pop().unwrap();
         if let (Type::Number(start), Type::Number(end)) =
@@ -95,8 +87,8 @@ impl Map {
 }
 
 impl NativeCallable for Map {
-    fn comparator(&self) -> &str {
-        ""
+    fn comparator(&self) -> Type {
+        Type::List(self.0.clone())
     }
 
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
