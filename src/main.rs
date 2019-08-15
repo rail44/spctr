@@ -9,8 +9,8 @@ use clap::{App, Arg};
 use eval::eval_source;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::stdin;
-use std::io::Read;
+use std::io::{stdin, Read};
+use std::fs;
 use std::rc::Rc;
 use std::str::FromStr;
 use token::Source;
@@ -29,19 +29,25 @@ impl Env {
             self.binds.insert(name.to_string(), value.clone());
             return value;
         }
-        dbg!(name);
         self.parent.as_ref().unwrap().borrow_mut().get_value(name)
     }
 }
 
 fn main() -> Result<(), failure::Error> {
     let matches = App::new("spctr")
-        .arg(Arg::with_name("INPUT").required(true).index(1))
+        .arg(Arg::with_name("FILE").index(1))
+        .arg(Arg::with_name("input").short("c").takes_value(true))
         .arg(Arg::with_name("use_stdin").short("i").takes_value(false))
         .get_matches();
 
-    let input = matches.value_of("INPUT").unwrap();
-    let source = Source::from_str(input).unwrap();
+    let source = match matches.value_of("input") {
+        Some(v) => Source::from_str(v).unwrap(),
+        None => {
+            let path = matches.value_of("FILE").unwrap();
+            let input = fs::read_to_string(path)?;
+            Source::from_str(&input).unwrap()
+        }
+    };
 
     if matches.is_present("use_stdin") {
         let mut s = String::new();
