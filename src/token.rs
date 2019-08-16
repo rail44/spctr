@@ -347,7 +347,7 @@ impl TryFrom<Pairs<'_, Rule>> for PrimaryPart {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrimaryPartRight {
-    Calling(Expression),
+    Calling(Vec<Expression>),
     Indexing(Expression),
 }
 
@@ -356,14 +356,13 @@ impl TryFrom<Pair<'_, Rule>> for PrimaryPartRight {
 
     fn try_from(pair: Pair<'_, Rule>) -> Result<Self, Self::Error> {
         Ok(match pair.as_rule() {
-            Rule::calling => PrimaryPartRight::Calling(Expression::try_from(
-                pair.into_inner()
-                    .next()
-                    .unwrap()
-                    .into_inner()
-                    .next()
-                    .unwrap(),
-            )?),
+            Rule::calling => {
+                let mut v = vec![];
+                for pair in pair.into_inner() {
+                    v.push(Expression::try_from(pair.into_inner().next().unwrap())?);
+                }
+                PrimaryPartRight::Calling(v)
+            }
             Rule::indexing => PrimaryPartRight::Indexing(Expression::try_from(
                 pair.into_inner()
                     .next()

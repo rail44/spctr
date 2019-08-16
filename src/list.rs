@@ -45,15 +45,14 @@ impl ListModule {
 pub struct Range;
 
 impl NativeCallable for Range {
-    fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
-        let arg = args.pop().unwrap();
+    fn call(&self, _env: &mut Env, mut args: Vec<Type>) -> Type {
         if let (Type::Number(start), Type::Number(end)) =
-            (arg.get_prop(env, "start"), arg.get_prop(env, "end"))
+            (args.remove(0), args.remove(0))
         {
             let start = start as i32;
             let end = end as i32;
             return Type::List(List::new(
-                (start..=end).map(|i| Type::Number(i.into())).collect(),
+                (start..end).map(|i| Type::Number(i.into())).collect(),
             ));
         }
         panic!();

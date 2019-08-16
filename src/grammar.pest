@@ -27,7 +27,7 @@ primary = { primary_part ~ ("." ~ primary_part)* }
 
 primary_part = { atom ~ (calling | indexing)* }
 
-calling = { "(" ~ expression ~ ")" }
+calling = { "(" ~ expression ~ ("," ~ expression)? ~ ")" }
 indexing = { "[" ~ expression ~ "]" }
 
 atom = _{

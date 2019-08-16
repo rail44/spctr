@@ -137,8 +137,8 @@ impl Evaluable for token::Primary {
                             Type::Number(n) => base = base.indexing(n as i32),
                             _ => panic!(),
                         },
-                        Calling(arg) => {
-                            base = base.call(&mut env.clone(), vec![arg.eval(env)]);
+                        Calling(expressions) => {
+                            base = base.call(&mut env.clone(), expressions.into_iter().map(|e| e.eval(env)).collect());
                         }
                     }
                 }
@@ -162,8 +162,8 @@ impl Evaluable for token::PrimaryPart {
                     Type::Number(n) => base = base.indexing(n as i32),
                     _ => panic!(),
                 },
-                Calling(arg) => {
-                    base = base.call(&mut env.clone(), vec![arg.eval(env)]);
+                Calling(expressions) => {
+                    base = base.call(&mut env.clone(), expressions.into_iter().map(|e| e.eval(env)).collect());
                 }
             }
         }
