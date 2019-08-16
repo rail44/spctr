@@ -103,7 +103,7 @@ impl TryFrom<Pairs<'_, Rule>> for Source {
                     let name = match ident.as_rule() {
                         Rule::identify => ident.as_str(),
                         Rule::string_literal => ident.into_inner().next().unwrap().as_str(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
                     let expression = inner
                         .next()

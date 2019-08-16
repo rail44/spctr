@@ -30,7 +30,7 @@ impl std::fmt::Display for List {
 pub struct ListModule;
 
 impl ListModule {
-    pub fn new() -> Type {
+    pub fn get_value() -> Type {
         Type::Map(
             Default::default(),
             [("range".to_string(), BoxedNativeCallable::new(Range).into())]
@@ -46,9 +46,7 @@ pub struct Range;
 
 impl NativeCallable for Range {
     fn call(&self, _env: &mut Env, mut args: Vec<Type>) -> Type {
-        if let (Type::Number(start), Type::Number(end)) =
-            (args.remove(0), args.remove(0))
-        {
+        if let (Type::Number(start), Type::Number(end)) = (args.remove(0), args.remove(0)) {
             let start = start as i32;
             let end = end as i32;
             return Type::List(List::new(

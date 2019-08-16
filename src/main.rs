@@ -9,8 +9,8 @@ use clap::{App, Arg};
 use eval::eval_source;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{stdin, Read};
 use std::fs;
+use std::io::{stdin, Read};
 use std::rc::Rc;
 use std::str::FromStr;
 use token::Source;
@@ -55,7 +55,8 @@ fn main() -> Result<(), failure::Error> {
 
         println!(
             "{}",
-            eval_source(source, &mut Default::default()).call(&mut Default::default(), vec![Type::String(s)])
+            eval_source(source, &mut Default::default())
+                .call(&mut Default::default(), vec![Type::String(s)])
         );
         return Ok(());
     }

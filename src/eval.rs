@@ -8,10 +8,10 @@ pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
     if let Some(expression) = source.expressions.pop() {
         source
             .binds
-            .insert("List".to_string(), list::ListModule::new());
+            .insert("List".to_string(), list::ListModule::get_value());
         source
             .binds
-            .insert("Json".to_string(), json::JsonModule::new());
+            .insert("Json".to_string(), json::JsonModule::get_value());
 
         let mut env = Env {
             binds: source.binds,
@@ -138,7 +138,10 @@ impl Evaluable for token::Primary {
                             _ => panic!(),
                         },
                         Calling(expressions) => {
-                            base = base.call(&mut env.clone(), expressions.into_iter().map(|e| e.eval(env)).collect());
+                            base = base.call(
+                                &mut env.clone(),
+                                expressions.into_iter().map(|e| e.eval(env)).collect(),
+                            );
                         }
                     }
                 }
@@ -163,7 +166,10 @@ impl Evaluable for token::PrimaryPart {
                     _ => panic!(),
                 },
                 Calling(expressions) => {
-                    base = base.call(&mut env.clone(), expressions.into_iter().map(|e| e.eval(env)).collect());
+                    base = base.call(
+                        &mut env.clone(),
+                        expressions.into_iter().map(|e| e.eval(env)).collect(),
+                    );
                 }
             }
         }

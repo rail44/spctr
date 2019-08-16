@@ -1,14 +1,14 @@
+use crate::eval::eval_source;
+use crate::token::Source;
 use crate::types::{BoxedNativeCallable, NativeCallable, Type};
 use crate::Env;
-use crate::token::{Source};
-use crate::eval::{eval_source};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JsonModule;
 
 impl JsonModule {
-    pub fn new() -> Type {
+    pub fn get_value() -> Type {
         Type::Map(
             Default::default(),
             [("parse".to_string(), BoxedNativeCallable::new(Parse).into())]
@@ -46,7 +46,6 @@ impl std::fmt::Display for Parse {
         write!(f, "Json.parse")
     }
 }
-
 
 #[test]
 fn test_access_json() {
