@@ -25,7 +25,7 @@ pub trait NativeCallable: 'static + Debug + Display {
     }
 
     fn comparator(&self) -> Type {
-        Type::Number(0.0)
+        Type::Null
     }
 
     fn box_clone(&self) -> Box<dyn NativeCallable>;
