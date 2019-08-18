@@ -144,9 +144,8 @@ impl Evaluable for token::Primary {
                             _ => panic!(),
                         },
                         Calling(expressions) => {
-                            base = base.call(
-                                expressions.into_iter().map(|e| e.eval(env)).collect(),
-                            );
+                            base =
+                                base.call(expressions.into_iter().map(|e| e.eval(env)).collect());
                         }
                     }
                 }
@@ -171,9 +170,7 @@ impl Evaluable for token::PrimaryPart {
                     _ => panic!(),
                 },
                 Calling(expressions) => {
-                    base = base.call(
-                        expressions.into_iter().map(|e| e.eval(env)).collect(),
-                    );
+                    base = base.call(expressions.into_iter().map(|e| e.eval(env)).collect());
                 }
             }
         }

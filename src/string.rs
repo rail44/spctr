@@ -8,10 +8,7 @@ pub struct StringModule;
 impl StringModule {
     pub fn get_value() -> Type {
         let mut binds = HashMap::new();
-        binds.insert(
-            "concat".to_string(),
-            Type::NativeCallable(concat)
-        );
+        binds.insert("concat".to_string(), Type::NativeCallable(concat));
         Type::Map(map::Map::new(Default::default(), binds))
     }
 }
