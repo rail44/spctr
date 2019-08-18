@@ -1,5 +1,5 @@
 use crate::types::Type;
-use crate::{map, Env};
+use crate::{map};
 use std::collections::HashMap;
 use std::iter::Iterator;
 

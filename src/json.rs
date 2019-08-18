@@ -1,7 +1,7 @@
 use crate::eval::eval_source;
 use crate::token::Source;
 use crate::types::Type;
-use crate::{map, Env};
+use crate::{map};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]

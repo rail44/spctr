@@ -1,9 +1,9 @@
 use crate::eval::Evaluable;
 use crate::{list, map, token, Env};
-use std::any::Any;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,7 +69,7 @@ impl std::fmt::Display for Type {
             Type::List(l) => write!(formatter, "{}", l),
             Type::Function(_, _, _) => write!(formatter, "[function]"),
             Type::Boolean(b) => write!(formatter, "{}", b),
-            Type::NativeCallable(n) => write!(formatter, "[NativeCallable]"),
+            Type::NativeCallable(_n) => write!(formatter, "[NativeCallable]"),
             Type::Unevaluated(expression) => write!(formatter, "[Unevaluated {:?}]", expression),
             Type::Null => write!(formatter, "null"),
         }
