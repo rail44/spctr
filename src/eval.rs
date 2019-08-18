@@ -1,5 +1,5 @@
 use crate::types::Type;
-use crate::{json, list, map, token, Env};
+use crate::{string, json, list, map, token, Env};
 use std::cell::RefCell;
 use std::iter::IntoIterator;
 use std::rc::Rc;
@@ -15,6 +15,9 @@ pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
         source
             .binds
             .insert("Json".to_string(), json::JsonModule::get_value());
+        source
+            .binds
+            .insert("String".to_string(), string::StringModule::get_value());
 
         let mut env = Env {
             binds: source.binds,
