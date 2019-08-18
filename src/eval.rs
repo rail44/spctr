@@ -1,5 +1,5 @@
 use crate::types::Type;
-use crate::{json, list, token, Env};
+use crate::{json, list, map, token, Env};
 use std::cell::RefCell;
 use std::iter::IntoIterator;
 use std::rc::Rc;
@@ -20,7 +20,7 @@ pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
         return expression.eval(&mut env);
     }
 
-    Type::Map(env.clone(), source.binds)
+    Type::Map(map::Map::new(env.clone(), source.binds))
 }
 
 impl Evaluable for token::Source {
@@ -127,13 +127,13 @@ impl Evaluable for token::Primary {
 
         for right in self.0 {
             if let token::Atom::Indentify(accessor) = right.base {
-                base = base.get_prop(env, &accessor);
+                base = base.get_prop(&accessor);
 
                 for right in right.rights {
                     use token::PrimaryPartRight::*;
                     match right {
                         Indexing(arg) => match arg.eval(env) {
-                            Type::String(s) => base = base.get_prop(env, &s),
+                            Type::String(s) => base = base.get_prop(&s),
                             Type::Number(n) => base = base.indexing(n as i32),
                             _ => panic!(),
                         },
@@ -161,7 +161,7 @@ impl Evaluable for token::PrimaryPart {
             use token::PrimaryPartRight::*;
             match right {
                 Indexing(arg) => match arg.eval(env) {
-                    Type::String(s) => base = base.get_prop(env, &s),
+                    Type::String(s) => base = base.get_prop(&s),
                     Type::Number(n) => base = base.indexing(n as i32),
                     _ => panic!(),
                 },

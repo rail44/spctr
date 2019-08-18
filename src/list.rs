@@ -1,5 +1,5 @@
 use crate::types::{BoxedNativeCallable, NativeCallable, Type};
-use crate::Env;
+use crate::{map, Env};
 use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,6 +12,13 @@ impl List {
 
     pub fn indexing(&self, n: i32) -> Type {
         self.0[n as usize].clone()
+    }
+
+    pub fn get_prop(&self, name: &str) -> Type {
+        match name {
+            "map" => BoxedNativeCallable::new(Map::new(self.clone())).into(),
+            _ => panic!(),
+        }
     }
 }
 
@@ -31,13 +38,13 @@ pub struct ListModule;
 
 impl ListModule {
     pub fn get_value() -> Type {
-        Type::Map(
+        Type::Map(map::Map::new(
             Default::default(),
             [("range".to_string(), BoxedNativeCallable::new(Range).into())]
                 .iter()
                 .cloned()
                 .collect(),
-        )
+        ))
     }
 }
 

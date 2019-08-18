@@ -1,6 +1,7 @@
 mod eval;
 mod json;
 mod list;
+mod map;
 mod string;
 mod token;
 mod types;

@@ -1,5 +1,5 @@
 use crate::eval::Evaluable;
-use crate::{list, string, token, Env};
+use crate::{list, map, string, token, Env};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -54,7 +54,7 @@ pub enum Type {
     Number(f64),
     String(String),
     List(list::List),
-    Map(Env, HashMap<String, Type>),
+    Map(map::Map),
     Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
     NativeCallable(BoxedNativeCallable),
@@ -63,19 +63,10 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn get_prop(&self, _env: &mut Env, name: &str) -> Type {
+    pub fn get_prop(&self, name: &str) -> Type {
         match self {
-            Type::Map(env, map) => {
-                let mut child = Env {
-                    binds: map.clone(),
-                    parent: Some(Rc::new(RefCell::new(env.clone()))),
-                };
-                child.get_value(name)
-            }
-            Type::List(l) => match name {
-                "map" => BoxedNativeCallable::new(list::Map::new(l.clone())).into(),
-                _ => panic!(),
-            },
+            Type::Map(m) => m.get_prop(name),
+            Type::List(l) => l.get_prop(name),
             Type::String(s) => match name {
                 "concat" => BoxedNativeCallable::new(string::Concat::new(s.clone())).into(),
                 _ => panic!(),
@@ -122,7 +113,7 @@ impl std::fmt::Display for Type {
         match self {
             Type::Number(f) => write!(formatter, "{}", f),
             Type::String(s) => write!(formatter, "\"{}\"", s),
-            Type::Map(_env, m) => write!(formatter, "{:?}", m),
+            Type::Map(m) => write!(formatter, "{:?}", m),
             Type::List(l) => write!(formatter, "{}", l),
             Type::Function(_, _, _) => write!(formatter, "[function]"),
             Type::Boolean(b) => write!(formatter, "{}", b),

@@ -1,7 +1,7 @@
 use crate::eval::eval_source;
 use crate::token::Source;
 use crate::types::{BoxedNativeCallable, NativeCallable, Type};
-use crate::Env;
+use crate::{map, Env};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,13 +9,13 @@ pub struct JsonModule;
 
 impl JsonModule {
     pub fn get_value() -> Type {
-        Type::Map(
+        Type::Map(map::Map::new(
             Default::default(),
             [("parse".to_string(), BoxedNativeCallable::new(Parse).into())]
                 .iter()
                 .cloned()
                 .collect(),
-        )
+        ))
     }
 }
 
