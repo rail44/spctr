@@ -8,11 +8,11 @@ pub struct StringModule;
 impl StringModule {
     pub fn get_value() -> Type {
         let mut binds = HashMap::new();
-        binds.insert("concat".to_string(), BoxedNativeCallable::new(Concat).into());
-        Type::Map(map::Map::new(
-            Default::default(),
-            binds
-        ))
+        binds.insert(
+            "concat".to_string(),
+            BoxedNativeCallable::new(Concat).into(),
+        );
+        Type::Map(map::Map::new(Default::default(), binds))
     }
 }
 
@@ -21,12 +21,16 @@ pub struct Concat;
 
 impl NativeCallable for Concat {
     fn call(&self, _env: &mut Env, args: Vec<Type>) -> Type {
-        Type::String(args.into_iter().map(|s| {
-            if let Type::String(s) = s {
-                return s
-            }
-            panic!();
-        }).collect())
+        Type::String(
+            args.into_iter()
+                .map(|s| {
+                    if let Type::String(s) = s {
+                        return s;
+                    }
+                    panic!();
+                })
+                .collect(),
+        )
     }
 
     fn box_clone(&self) -> Box<dyn NativeCallable> {

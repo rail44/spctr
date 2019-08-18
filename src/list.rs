@@ -1,7 +1,7 @@
 use crate::types::{BoxedNativeCallable, NativeCallable, Type};
 use crate::{map, Env};
-use std::iter::Iterator;
 use std::collections::HashMap;
+use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct List(Vec<Type>);
@@ -35,10 +35,7 @@ impl ListModule {
         let mut binds = HashMap::new();
         binds.insert("range".to_string(), BoxedNativeCallable::new(Range).into());
         binds.insert("map".to_string(), BoxedNativeCallable::new(Map).into());
-        Type::Map(map::Map::new(
-            Default::default(),
-            binds
-        ))
+        Type::Map(map::Map::new(Default::default(), binds))
     }
 }
 
@@ -76,11 +73,10 @@ impl NativeCallable for Map {
         if let Type::List(l) = args.remove(0) {
             let f = args.remove(0);
             return Type::List(List::new(
-                l.0
-                    .iter()
+                l.0.iter()
                     .map(|v| f.clone().call(env, vec![v.clone()]))
                     .collect(),
-            ))
+            ));
         }
         panic!();
     }

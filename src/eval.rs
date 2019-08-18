@@ -1,5 +1,5 @@
 use crate::types::Type;
-use crate::{string, json, list, map, token, Env};
+use crate::{json, list, map, string, token, Env};
 use std::cell::RefCell;
 use std::iter::IntoIterator;
 use std::rc::Rc;
