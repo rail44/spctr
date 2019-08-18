@@ -1,6 +1,7 @@
 use crate::types::{BoxedNativeCallable, NativeCallable, Type};
 use crate::{map, Env};
 use std::iter::Iterator;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct List(Vec<Type>);
@@ -12,13 +13,6 @@ impl List {
 
     pub fn indexing(&self, n: i32) -> Type {
         self.0[n as usize].clone()
-    }
-
-    pub fn get_prop(&self, name: &str) -> Type {
-        match name {
-            "map" => BoxedNativeCallable::new(Map::new(self.clone())).into(),
-            _ => panic!(),
-        }
     }
 }
 
@@ -38,12 +32,12 @@ pub struct ListModule;
 
 impl ListModule {
     pub fn get_value() -> Type {
+        let mut binds = HashMap::new();
+        binds.insert("range".to_string(), BoxedNativeCallable::new(Range).into());
+        binds.insert("map".to_string(), BoxedNativeCallable::new(Map).into());
         Type::Map(map::Map::new(
             Default::default(),
-            [("range".to_string(), BoxedNativeCallable::new(Range).into())]
-                .iter()
-                .cloned()
-                .collect(),
+            binds
         ))
     }
 }
@@ -75,28 +69,20 @@ impl std::fmt::Display for Range {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Map(List);
-
-impl Map {
-    pub fn new(l: List) -> Self {
-        Map(l)
-    }
-}
+pub struct Map;
 
 impl NativeCallable for Map {
-    fn comparator(&self) -> Type {
-        Type::List(self.0.clone())
-    }
-
     fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
-        let arg = args.pop().unwrap();
-        Type::List(List::new(
-            (self.0)
-                .0
-                .iter()
-                .map(|v| arg.clone().call(env, vec![v.clone()]))
-                .collect(),
-        ))
+        if let Type::List(l) = args.remove(0) {
+            let f = args.remove(0);
+            return Type::List(List::new(
+                l.0
+                    .iter()
+                    .map(|v| f.clone().call(env, vec![v.clone()]))
+                    .collect(),
+            ))
+        }
+        panic!();
     }
 
     fn box_clone(&self) -> Box<dyn NativeCallable> {
@@ -106,6 +92,6 @@ impl NativeCallable for Map {
 
 impl std::fmt::Display for Map {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}.map", self.0)
+        write!(f, "List.map")
     }
 }

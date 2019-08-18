@@ -9,6 +9,6 @@ fizzbuzz: (i) => {
   fizz.concat(buzz)
 },
 
-result: l.map(fizzbuzz),
+result: List.map(l, fizzbuzz),
 
-l.map((i) => [i, result[i]])
+List.map(l, (i) => [i, result[i]])

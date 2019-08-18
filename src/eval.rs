@@ -11,6 +11,9 @@ pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
             .insert("List".to_string(), list::ListModule::get_value());
         source
             .binds
+            .insert("Map".to_string(), map::MapModule::get_value());
+        source
+            .binds
             .insert("Json".to_string(), json::JsonModule::get_value());
 
         let mut env = Env {

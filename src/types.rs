@@ -66,7 +66,6 @@ impl Type {
     pub fn get_prop(&self, name: &str) -> Type {
         match self {
             Type::Map(m) => m.get_prop(name),
-            Type::List(l) => l.get_prop(name),
             Type::String(s) => match name {
                 "concat" => BoxedNativeCallable::new(string::Concat::new(s.clone())).into(),
                 _ => panic!(),
