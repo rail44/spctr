@@ -57,7 +57,7 @@ fn main() -> Result<(), failure::Error> {
         println!(
             "{}",
             eval_source(source, &mut Default::default())
-                .call(&mut Default::default(), vec![Type::String(s)])
+                .call(vec![Type::String(s)])
         );
         return Ok(());
     }

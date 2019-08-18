@@ -1,6 +1,6 @@
 use crate::eval::eval_source;
 use crate::token::Source;
-use crate::types::{BoxedNativeCallable, NativeCallable, Type};
+use crate::types::Type;
 use crate::{map, Env};
 use std::str::FromStr;
 
@@ -11,7 +11,7 @@ impl JsonModule {
     pub fn get_value() -> Type {
         Type::Map(map::Map::new(
             Default::default(),
-            [("parse".to_string(), BoxedNativeCallable::new(Parse).into())]
+            [("parse".to_string(), Type::NativeCallable(parse))]
                 .iter()
                 .cloned()
                 .collect(),
@@ -25,26 +25,11 @@ impl std::fmt::Display for JsonModule {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Parse;
-
-impl NativeCallable for Parse {
-    fn call(&self, env: &mut Env, mut args: Vec<Type>) -> Type {
-        if let Type::String(s) = args.pop().unwrap() {
-            return eval_source(Source::from_str(&s).unwrap(), env);
-        }
-        panic!();
+fn parse(mut args: Vec<Type>) -> Type {
+    if let Type::String(s) = args.pop().unwrap() {
+        return eval_source(Source::from_str(&s).unwrap(), &mut Default::default());
     }
-
-    fn box_clone(&self) -> Box<dyn NativeCallable> {
-        Box::new(self.clone())
-    }
-}
-
-impl std::fmt::Display for Parse {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Json.parse")
-    }
+    panic!();
 }
 
 #[test]

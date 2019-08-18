@@ -1,4 +1,4 @@
-use crate::types::{BoxedNativeCallable, NativeCallable, Type};
+use crate::types::Type;
 use crate::{map, Env};
 use std::collections::HashMap;
 
@@ -10,36 +10,21 @@ impl StringModule {
         let mut binds = HashMap::new();
         binds.insert(
             "concat".to_string(),
-            BoxedNativeCallable::new(Concat).into(),
+            Type::NativeCallable(concat)
         );
         Type::Map(map::Map::new(Default::default(), binds))
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Concat;
-
-impl NativeCallable for Concat {
-    fn call(&self, _env: &mut Env, args: Vec<Type>) -> Type {
-        Type::String(
-            args.into_iter()
-                .map(|s| {
-                    if let Type::String(s) = s {
-                        return s;
-                    }
-                    panic!();
-                })
-                .collect(),
-        )
-    }
-
-    fn box_clone(&self) -> Box<dyn NativeCallable> {
-        Box::new(self.clone())
-    }
-}
-
-impl std::fmt::Display for Concat {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "String.concat")
-    }
+fn concat(args: Vec<Type>) -> Type {
+    Type::String(
+        args.into_iter()
+            .map(|s| {
+                if let Type::String(s) = s {
+                    return s;
+                }
+                panic!();
+            })
+            .collect(),
+    )
 }

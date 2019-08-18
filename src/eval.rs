@@ -145,7 +145,6 @@ impl Evaluable for token::Primary {
                         },
                         Calling(expressions) => {
                             base = base.call(
-                                &mut env.clone(),
                                 expressions.into_iter().map(|e| e.eval(env)).collect(),
                             );
                         }
@@ -173,7 +172,6 @@ impl Evaluable for token::PrimaryPart {
                 },
                 Calling(expressions) => {
                     base = base.call(
-                        &mut env.clone(),
                         expressions.into_iter().map(|e| e.eval(env)).collect(),
                     );
                 }

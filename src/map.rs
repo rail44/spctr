@@ -1,4 +1,4 @@
-use crate::types::{BoxedNativeCallable, NativeCallable, Type};
+use crate::types::Type;
 use crate::{list, Env};
 
 use std::cell::RefCell;
@@ -29,7 +29,7 @@ impl MapModule {
     pub fn get_value() -> Type {
         Type::Map(Map::new(
             Default::default(),
-            [("keys".to_string(), BoxedNativeCallable::new(Keys).into())]
+            [("keys".to_string(), Type::NativeCallable(keys).into())]
                 .iter()
                 .cloned()
                 .collect(),
@@ -37,26 +37,11 @@ impl MapModule {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Keys;
-
-impl NativeCallable for Keys {
-    fn call(&self, _env: &mut Env, mut args: Vec<Type>) -> Type {
-        if let Type::Map(m) = args.pop().unwrap() {
-            return Type::List(list::List::new(
-                m.1.keys().map(|k| Type::String(k.to_string())).collect(),
-            ));
-        }
-        panic!();
+fn keys(mut args: Vec<Type>) -> Type {
+    if let Type::Map(m) = args.pop().unwrap() {
+        return Type::List(list::List::new(
+            m.1.keys().map(|k| Type::String(k.to_string())).collect(),
+        ));
     }
-
-    fn box_clone(&self) -> Box<dyn NativeCallable> {
-        Box::new(self.clone())
-    }
-}
-
-impl std::fmt::Display for Keys {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "List.map")
-    }
+    panic!();
 }
