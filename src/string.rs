@@ -42,12 +42,11 @@ hoge: "HOGE,hoge",
 hoge.split(",")"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
-    println!("{}", result);
-    assert!(
-        result
-            == Type::List(vec![
-                Type::String("HOGE".to_string()),
-                Type::String("hoge".to_string())
-            ])
+    assert_eq!(
+        result,
+        Type::List(vec![
+            Type::String("HOGE".to_string()),
+            Type::String("hoge".to_string())
+        ])
     );
 }

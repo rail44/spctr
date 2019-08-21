@@ -41,6 +41,5 @@ json.hoge[2]"#;
 
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
-    println!("{}", result);
-    assert!(result == Type::Null);
+    assert_eq!(result, Type::Null);
 }

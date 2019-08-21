@@ -52,6 +52,5 @@ l: List.range(1, 11),
 l.reduce(0, (sum, i) => sum + i)"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
-    println!("{}", result);
     assert_eq!(result, Type::Number(55.0));
 }

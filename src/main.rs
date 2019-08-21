@@ -69,7 +69,10 @@ fn main() -> Result<(), failure::Error> {
 fn test_indexing_1() {
     let ast = r#"[1, 3][1]"#;
     let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, &mut Default::default()) == Type::Number(3.0));
+    assert_eq!(
+        eval_source(source, &mut Default::default()),
+        Type::Number(3.0)
+    );
 }
 
 #[test]
@@ -83,7 +86,10 @@ key: "foo",
 hoge[key]"#;
 
     let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, &mut Default::default()) == Type::String("bar".to_string()));
+    assert_eq!(
+        eval_source(source, &mut Default::default()),
+        Type::String("bar".to_string())
+    );
 }
 
 #[test]
@@ -95,16 +101,19 @@ hoge: (fuga) => {
 
 hoge(1)"#;
     let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, &mut Default::default()) == Type::Number(2.0));
+    assert_eq!(
+        eval_source(source, &mut Default::default()),
+        Type::Number(2.0)
+    );
 }
 
 #[test]
 fn test_list() {
     let ast = r#"[1, "hoge"]"#;
     let source = Source::from_str(ast).unwrap();
-    assert!(
-        eval_source(source, &mut Default::default())
-            == Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())])
+    assert_eq!(
+        eval_source(source, &mut Default::default()),
+        Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())])
     );
 }
 
@@ -120,8 +129,7 @@ obj: fn("prefix-"),
 obj.hoge.concat(" ", obj.fuga)"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
-    println!("{}", result);
-    assert!(result == Type::String("prefix-hoge prefix-fuga".to_string()));
+    assert_eq!(result, Type::String("prefix-hoge prefix-fuga".to_string()));
 }
 
 #[test]
@@ -131,8 +139,7 @@ hoge: "hoge",
 hoge.concat("fuga")"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
-    println!("{}", result);
-    assert!(result == Type::String("hogefuga".to_string()));
+    assert_eq!(result, Type::String("hogefuga".to_string()));
 }
 
 #[test]
@@ -147,5 +154,8 @@ hoge: {
 hoge.baz
 "#;
     let source = Source::from_str(ast).unwrap();
-    assert!(eval_source(source, &mut Default::default()) == Type::Number(35.0));
+    assert_eq!(
+        eval_source(source, &mut Default::default()),
+        Type::Number(35.0)
+    );
 }

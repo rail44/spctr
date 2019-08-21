@@ -40,8 +40,7 @@ map: {
 Map.keys(map)[0]"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
-    println!("{}", result);
-    assert!(result == Type::String("hoge".to_string()));
+    assert_eq!(result, Type::String("hoge".to_string()));
 }
 
 #[test]
@@ -57,6 +56,5 @@ map: {
 Map.values(map)[0]"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
-    println!("{}", result);
-    assert!(result == Type::String("HOGE".to_string()));
+    assert_eq!(result, Type::String("HOGE".to_string()));
 }
