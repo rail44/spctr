@@ -10,7 +10,7 @@ impl ListModule {
     pub fn get_value() -> Type {
         let mut binds = HashMap::new();
         binds.insert("range".to_string(), Native::Static(range).into());
-        Type::Map(map::Map::new(Default::default(), binds))
+        Type::Map(Default::default(), binds)
     }
 }
 

@@ -32,7 +32,7 @@ pub enum Type {
     Number(f64),
     String(String),
     List(Vec<Type>),
-    Map(map::Map),
+    Map(Env, HashMap<String, Type>),
     Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
     Native(Native),
@@ -40,10 +40,19 @@ pub enum Type {
     Null,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Map(Env, HashMap<String, Type>);
+
 impl Type {
     pub fn get_prop(&self, name: &str) -> Type {
         match self {
-            Type::Map(m) => m.get_prop(name),
+            Type::Map(env, m) => {
+                let mut child = Env {
+                    binds: m.clone(),
+                    parent: Some(Rc::new(RefCell::new(env.clone()))),
+                };
+                child.get_value(name)
+            }
             Type::String(_s) => match name {
                 "concat" => Type::Native(Native::Method(Box::new(self.clone()), string::concat)),
                 _ => unreachable!(name),
@@ -90,7 +99,7 @@ impl std::fmt::Display for Type {
         match self {
             Type::Number(f) => write!(formatter, "{}", f),
             Type::String(s) => write!(formatter, "\"{}\"", s),
-            Type::Map(m) => write!(formatter, "{:?}", m),
+            Type::Map(_env, m) => write!(formatter, "{:?}", m),
             Type::List(vec) => {
                 let v: Vec<String> = vec.iter().map(|e| format!("{}", e).to_string()).collect();
                 write!(formatter, "[{}]", v.join(", "))

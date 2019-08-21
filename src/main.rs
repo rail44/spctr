@@ -104,10 +104,7 @@ fn test_list() {
     let source = Source::from_str(ast).unwrap();
     assert!(
         eval_source(source, &mut Default::default())
-            == Type::List(vec![
-                Type::Number(1.0),
-                Type::String("hoge".to_string())
-            ])
+            == Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())])
     );
 }
 

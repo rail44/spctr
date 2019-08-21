@@ -23,7 +23,7 @@ pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
         return expression.eval(&mut env);
     }
 
-    Type::Map(map::Map::new(env.clone(), source.binds))
+    Type::Map(env.clone(), source.binds)
 }
 
 impl Evaluable for token::Source {

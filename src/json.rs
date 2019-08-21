@@ -9,13 +9,13 @@ pub struct JsonModule;
 
 impl JsonModule {
     pub fn get_value() -> Type {
-        Type::Map(map::Map::new(
+        Type::Map(
             Default::default(),
             [("parse".to_string(), Native::Static(parse).into())]
                 .iter()
                 .cloned()
                 .collect(),
-        ))
+        )
     }
 }
 

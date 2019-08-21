@@ -1,6 +1,4 @@
-
-use crate::types::{Type};
-
+use crate::types::Type;
 
 pub fn concat(receiver: Type, args: Vec<Type>) -> Type {
     if let Type::String(base) = receiver {
