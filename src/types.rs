@@ -7,6 +7,27 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum Native {
+    Static(fn(Vec<Type>) -> Type),
+    Method(Box<Type>, fn(Type, Vec<Type>) -> Type),
+}
+
+impl Native {
+    pub fn call(self, args: Vec<Type>) -> Type {
+        match self {
+            Native::Static(f) => f(args),
+            Native::Method(receiver, f) => f(*receiver, args),
+        }
+    }
+}
+
+impl Into<Type> for Native {
+    fn into(self) -> Type {
+        Type::Native(self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Number(f64),
     String(String),
@@ -14,7 +35,7 @@ pub enum Type {
     Map(map::Map),
     Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
-    NativeCallable(fn(Vec<Type>) -> Type),
+    Native(Native),
     Unevaluated(token::Expression),
     Null,
 }
@@ -47,7 +68,7 @@ impl Type {
                 };
                 expression.eval(&mut env)
             }
-            Type::NativeCallable(n) => n(args),
+            Type::Native(n) => n.call(args),
             _ => unreachable!(),
         }
     }
@@ -69,7 +90,7 @@ impl std::fmt::Display for Type {
             Type::List(l) => write!(formatter, "{}", l),
             Type::Function(_, _, _) => write!(formatter, "[function]"),
             Type::Boolean(b) => write!(formatter, "{}", b),
-            Type::NativeCallable(_n) => write!(formatter, "[NativeCallable]"),
+            Type::Native(_n) => write!(formatter, "[Native]"),
             Type::Unevaluated(expression) => write!(formatter, "[Unevaluated {:?}]", expression),
             Type::Null => write!(formatter, "null"),
         }

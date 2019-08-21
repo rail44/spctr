@@ -1,4 +1,4 @@
-use crate::types::Type;
+use crate::types::{Native, Type};
 use crate::{list, Env};
 
 use std::cell::RefCell;
@@ -29,7 +29,7 @@ impl MapModule {
     pub fn get_value() -> Type {
         Type::Map(Map::new(
             Default::default(),
-            [("keys".to_string(), Type::NativeCallable(keys).into())]
+            [("keys".to_string(), Native::Static(keys).into())]
                 .iter()
                 .cloned()
                 .collect(),

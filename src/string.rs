@@ -1,5 +1,5 @@
-use crate::types::Type;
-use crate::{map};
+use crate::map;
+use crate::types::{Native, Type};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -8,7 +8,7 @@ pub struct StringModule;
 impl StringModule {
     pub fn get_value() -> Type {
         let mut binds = HashMap::new();
-        binds.insert("concat".to_string(), Type::NativeCallable(concat));
+        binds.insert("concat".to_string(), Native::Static(concat).into());
         Type::Map(map::Map::new(Default::default(), binds))
     }
 }

@@ -1,5 +1,5 @@
-use crate::types::Type;
-use crate::{map};
+use crate::map;
+use crate::types::{Native, Type};
 use std::collections::HashMap;
 use std::iter::Iterator;
 
@@ -33,8 +33,8 @@ pub struct ListModule;
 impl ListModule {
     pub fn get_value() -> Type {
         let mut binds = HashMap::new();
-        binds.insert("range".to_string(), Type::NativeCallable(range));
-        binds.insert("map".to_string(), Type::NativeCallable(map));
+        binds.insert("range".to_string(), Native::Static(range).into());
+        binds.insert("map".to_string(), Native::Static(map).into());
         Type::Map(map::Map::new(Default::default(), binds))
     }
 }

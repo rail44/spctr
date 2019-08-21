@@ -1,7 +1,7 @@
 use crate::eval::eval_source;
+use crate::map;
 use crate::token::Source;
-use crate::types::Type;
-use crate::{map};
+use crate::types::{Native, Type};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -11,7 +11,7 @@ impl JsonModule {
     pub fn get_value() -> Type {
         Type::Map(map::Map::new(
             Default::default(),
-            [("parse".to_string(), Type::NativeCallable(parse))]
+            [("parse".to_string(), Native::Static(parse).into())]
                 .iter()
                 .cloned()
                 .collect(),
