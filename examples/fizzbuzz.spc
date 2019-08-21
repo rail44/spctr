@@ -6,9 +6,9 @@ fizzbuzz: (i) => {
   fizz: if is_fizz "fizz" "",
   buzz: if is_buzz "buzz" "",
   
-  String.concat(fizz, buzz)
+  fizz.concat(buzz)
 },
 
-result: List.map(l, fizzbuzz),
+result: l.map(fizzbuzz),
 
-List.map(l, (i) => [i, result[i]])
+l.map((i) => [i, result[i]])
