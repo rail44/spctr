@@ -15,9 +15,6 @@ pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
         source
             .binds
             .insert("Json".to_string(), json::JsonModule::get_value());
-        source
-            .binds
-            .insert("String".to_string(), string::StringModule::get_value());
 
         let mut env = Env {
             binds: source.binds,
@@ -188,9 +185,7 @@ impl Evaluable for token::Atom {
             Block(s) => s.eval(env),
             Null => Type::Null,
             Indentify(s) => env.get_value(&s),
-            List(v) => Type::List(list::List::new(
-                v.into_iter().map(|e| e.eval(env)).collect(),
-            )),
+            List(v) => Type::List(v.into_iter().map(|e| e.eval(env)).collect()),
         }
     }
 }

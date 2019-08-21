@@ -1,5 +1,5 @@
 use crate::eval::Evaluable;
-use crate::{list, map, token, Env};
+use crate::{list, map, string, token, Env};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -31,7 +31,7 @@ impl Into<Type> for Native {
 pub enum Type {
     Number(f64),
     String(String),
-    List(list::List),
+    List(Vec<Type>),
     Map(map::Map),
     Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
@@ -44,13 +44,17 @@ impl Type {
     pub fn get_prop(&self, name: &str) -> Type {
         match self {
             Type::Map(m) => m.get_prop(name),
+            Type::String(s) => match name {
+                "concat" => Type::Native(Native::Method(Box::new(self.clone()), string::concat)),
+                _ => unreachable!(name),
+            },
             _ => unreachable!(name),
         }
     }
 
     pub fn indexing(&self, n: i32) -> Type {
         match self {
-            Type::List(l) => l.indexing(n),
+            Type::List(vec) => vec[n as usize].clone(),
             _ => unreachable!(),
         }
     }
@@ -87,7 +91,10 @@ impl std::fmt::Display for Type {
             Type::Number(f) => write!(formatter, "{}", f),
             Type::String(s) => write!(formatter, "\"{}\"", s),
             Type::Map(m) => write!(formatter, "{:?}", m),
-            Type::List(l) => write!(formatter, "{}", l),
+            Type::List(vec) => {
+                let v: Vec<String> = vec.iter().map(|e| format!("{}", e).to_string()).collect();
+                write!(formatter, "[{}]", v.join(", "))
+            }
             Type::Function(_, _, _) => write!(formatter, "[function]"),
             Type::Boolean(b) => write!(formatter, "{}", b),
             Type::Native(_n) => write!(formatter, "[Native]"),

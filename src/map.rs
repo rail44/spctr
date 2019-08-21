@@ -39,9 +39,7 @@ impl MapModule {
 
 fn keys(mut args: Vec<Type>) -> Type {
     if let Type::Map(m) = args.pop().unwrap() {
-        return Type::List(list::List::new(
-            m.1.keys().map(|k| Type::String(k.to_string())).collect(),
-        ));
+        return Type::List(m.1.keys().map(|k| Type::String(k.to_string())).collect());
     }
     panic!();
 }
