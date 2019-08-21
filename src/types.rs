@@ -55,6 +55,7 @@ impl Type {
             }
             Type::String(_s) => match name {
                 "concat" => Type::Native(Native::Method(Box::new(self.clone()), string::concat)),
+                "split" => Type::Native(Native::Method(Box::new(self.clone()), string::split)),
                 _ => unreachable!(name),
             },
             Type::List(_v) => match name {
