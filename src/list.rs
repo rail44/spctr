@@ -29,3 +29,29 @@ pub fn map(receiver: Type, mut args: Vec<Type>) -> Type {
     }
     panic!();
 }
+
+pub fn reduce(receiver: Type, mut args: Vec<Type>) -> Type {
+    if let Type::List(l) = receiver {
+        let initial = args.remove(0);
+        let f = args.remove(0);
+        return l
+            .into_iter()
+            .fold(initial, |acc, v| f.clone().call(vec![acc, v]));
+    }
+    panic!();
+}
+
+#[test]
+fn test_reduce() {
+    use crate::eval::eval_source;
+    use crate::token::Source;
+    use std::str::FromStr;
+
+    let ast = r#"
+l: List.range(1, 11),
+l.reduce(0, (sum, i) => sum + i)"#;
+    let source = Source::from_str(ast).unwrap();
+    let result = eval_source(source, &mut Default::default());
+    println!("{}", result);
+    assert_eq!(result, Type::Number(55.0));
+}

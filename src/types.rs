@@ -60,6 +60,7 @@ impl Type {
             },
             Type::List(_v) => match name {
                 "map" => Type::Native(Native::Method(Box::new(self.clone()), list::map)),
+                "reduce" => Type::Native(Native::Method(Box::new(self.clone()), list::reduce)),
                 _ => unreachable!(name),
             },
             _ => unreachable!(name),
