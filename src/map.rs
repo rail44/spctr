@@ -1,5 +1,6 @@
-use crate::types::{Native, Type};
+use crate::types::{Map, Native, Type};
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapModule;
@@ -13,18 +14,18 @@ impl MapModule {
     }
 }
 
-fn keys(mut args: Vec<Type>) -> Type {
-    if let Type::Map(_env, m) = args.pop().unwrap() {
-        return Type::List(m.into_iter().map(|(k, _)| Type::String(k)).collect());
-    }
-    panic!();
+fn keys(mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let (_env, m): Map = args.pop().unwrap().try_into()?;
+    Ok(Type::List(
+        m.into_iter().map(|(k, _)| Type::String(k)).collect(),
+    ))
 }
 
-fn values(mut args: Vec<Type>) -> Type {
-    if let Type::Map(mut env, m) = args.pop().unwrap() {
-        return Type::List(m.into_iter().map(|(_, v)| v.eval(&mut env)).collect());
-    }
-    panic!();
+fn values(mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let (mut env, m): Map = args.pop().unwrap().try_into()?;
+    Ok(Type::List(
+        m.into_iter().map(|(_, v)| v.eval(&mut env)).collect(),
+    ))
 }
 
 #[test]

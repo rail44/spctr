@@ -1,5 +1,6 @@
 use crate::types::{Native, Type};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -13,32 +14,30 @@ impl ListModule {
     }
 }
 
-fn range(mut args: Vec<Type>) -> Type {
-    if let (Type::Number(start), Type::Number(end)) = (args.remove(0), args.remove(0)) {
-        let start = start as i32;
-        let end = end as i32;
-        return Type::List((start..end).map(|i| Type::Number(i.into())).collect());
-    }
-    panic!();
+fn range(mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let start: f64 = args.remove(0).try_into()?;
+    let end: f64 = args.remove(0).try_into()?;
+    Ok(Type::List(
+        ((start as i32)..(end as i32))
+            .map(|i| Type::Number(i.into()))
+            .collect(),
+    ))
 }
 
-pub fn map(receiver: Type, mut args: Vec<Type>) -> Type {
-    if let Type::List(l) = receiver {
-        let f = args.remove(0);
-        return Type::List(l.into_iter().map(|v| f.clone().call(vec![v])).collect());
-    }
-    panic!();
+pub fn map(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let l: Vec<Type> = receiver.try_into()?;
+    let f = args.remove(0);
+    Ok(Type::List(
+        l.into_iter().map(|v| f.clone().call(vec![v])).collect(),
+    ))
 }
 
-pub fn reduce(receiver: Type, mut args: Vec<Type>) -> Type {
-    if let Type::List(l) = receiver {
-        let initial = args.remove(0);
-        let f = args.remove(0);
-        return l
-            .into_iter()
-            .fold(initial, |acc, v| f.clone().call(vec![acc, v]));
-    }
-    panic!();
+pub fn reduce(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let l: Vec<Type> = receiver.try_into()?;
+    let initial = args.remove(0);
+    let f = args.remove(0);
+    Ok(l.into_iter()
+        .fold(initial, |acc, v| f.clone().call(vec![acc, v])))
 }
 
 #[test]

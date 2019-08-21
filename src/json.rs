@@ -2,6 +2,7 @@ use crate::eval::eval_source;
 
 use crate::token::Source;
 use crate::types::{Native, Type};
+use std::convert::TryInto;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,11 +26,12 @@ impl std::fmt::Display for JsonModule {
     }
 }
 
-fn parse(mut args: Vec<Type>) -> Type {
-    if let Type::String(s) = args.pop().unwrap() {
-        return eval_source(Source::from_str(&s).unwrap(), &mut Default::default());
-    }
-    panic!();
+fn parse(mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let s: String = args.pop().unwrap().try_into()?;
+    Ok(eval_source(
+        Source::from_str(&s).unwrap(),
+        &mut Default::default(),
+    ))
 }
 
 #[test]
@@ -41,5 +43,6 @@ json.hoge[2]"#;
 
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
-    assert_eq!(result, Type::Null);
+    println!("{}", result);
+    assert!(result == Type::Null);
 }

@@ -1,34 +1,29 @@
 use crate::types::Type;
+use std::convert::TryInto;
 use std::iter::Iterator;
 
-pub fn concat(receiver: Type, args: Vec<Type>) -> Type {
-    if let Type::String(base) = receiver {
-        let rights: String = args
-            .into_iter()
-            .map(|s| {
-                if let Type::String(s) = s {
-                    return s;
-                }
-                panic!();
-            })
-            .collect();
-        return Type::String(format!("{}{}", base, rights));
-    }
-    panic!();
+pub fn concat(receiver: Type, args: Vec<Type>) -> Result<Type, failure::Error> {
+    let base: String = receiver.try_into()?;
+    let rights: String = args
+        .into_iter()
+        .map(|s| {
+            if let Type::String(s) = s {
+                return s;
+            }
+            panic!();
+        })
+        .collect();
+    Ok(Type::String(format!("{}{}", base, rights)))
 }
 
-pub fn split(receiver: Type, mut args: Vec<Type>) -> Type {
-    if let Type::String(base) = receiver {
-        if let Type::String(pat) = args.remove(0) {
-            return Type::List(
-                base.split(&pat)
-                    .map(|s| Type::String(s.to_string()))
-                    .collect(),
-            );
-        }
-        panic!();
-    }
-    panic!();
+pub fn split(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let base: String = receiver.try_into()?;
+    let pat: String = args.remove(0).try_into()?;
+    Ok(Type::List(
+        base.split(&pat)
+            .map(|s| Type::String(s.to_string()))
+            .collect(),
+    ))
 }
 
 #[test]

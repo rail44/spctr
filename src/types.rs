@@ -3,17 +3,22 @@ use crate::{list, string, token, Env};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-
+use std::convert::TryInto;
 use std::rc::Rc;
+
+use failure::format_err;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Native {
-    Static(fn(Vec<Type>) -> Type),
-    Method(Box<Type>, fn(Type, Vec<Type>) -> Type),
+    Static(fn(Vec<Type>) -> Result<Type, failure::Error>),
+    Method(
+        Box<Type>,
+        fn(Type, Vec<Type>) -> Result<Type, failure::Error>,
+    ),
 }
 
 impl Native {
-    pub fn call(self, args: Vec<Type>) -> Type {
+    pub fn call(self, args: Vec<Type>) -> Result<Type, failure::Error> {
         match self {
             Native::Static(f) => f(args),
             Native::Method(receiver, f) => f(*receiver, args),
@@ -27,6 +32,8 @@ impl Into<Type> for Native {
     }
 }
 
+pub type Map = (Env, HashMap<String, Type>);
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Number(f64),
@@ -39,9 +46,6 @@ pub enum Type {
     Unevaluated(token::Expression),
     Null,
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Map(Env, HashMap<String, Type>);
 
 impl Type {
     pub fn get_prop(&self, name: &str) -> Type {
@@ -87,7 +91,7 @@ impl Type {
                 };
                 expression.eval(&mut env)
             }
-            Type::Native(n) => n.call(args),
+            Type::Native(n) => n.call(args).unwrap(),
             _ => unreachable!(),
         }
     }
@@ -97,6 +101,50 @@ impl Type {
             Type::Unevaluated(expression) => expression.eval(env),
             _ => self,
         }
+    }
+}
+
+impl TryInto<String> for Type {
+    type Error = failure::Error;
+
+    fn try_into(self) -> Result<String, Self::Error> {
+        if let Type::String(s) = self {
+            return Ok(s);
+        }
+        Err(format_err!("{} is not String", self))
+    }
+}
+
+impl TryInto<Vec<Type>> for Type {
+    type Error = failure::Error;
+
+    fn try_into(self) -> Result<Vec<Type>, Self::Error> {
+        if let Type::List(v) = self {
+            return Ok(v);
+        }
+        Err(format_err!("{} is not List", self))
+    }
+}
+
+impl TryInto<f64> for Type {
+    type Error = failure::Error;
+
+    fn try_into(self) -> Result<f64, Self::Error> {
+        if let Type::Number(f) = self {
+            return Ok(f);
+        }
+        Err(format_err!("{} is not Number", self))
+    }
+}
+
+impl TryInto<Map> for Type {
+    type Error = failure::Error;
+
+    fn try_into(self) -> Result<Map, Self::Error> {
+        if let Type::Map(env, map) = self {
+            return Ok((env, map));
+        }
+        Err(format_err!("{} is not Map", self))
     }
 }
 
