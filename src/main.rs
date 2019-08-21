@@ -112,12 +112,12 @@ fn test_list() {
 fn test_getting_prop_what_its_defined() {
     let ast = r#"
 fn: (prefix) => {
-  hoge: String.concat(prefix, "hoge"),
-  fuga: String.concat(prefix, "fuga")
+  hoge: prefix.concat("hoge"),
+  fuga: prefix.concat("fuga")
 },
 obj: fn("prefix-"),
 
-String.concat(obj.hoge, " ", obj.fuga)"#;
+obj.hoge.concat(" ", obj.fuga)"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
     println!("{}", result);
@@ -128,7 +128,7 @@ String.concat(obj.hoge, " ", obj.fuga)"#;
 fn test_string_concat() {
     let ast = r#"
 hoge: "hoge",
-String.concat(hoge, "fuga")"#;
+hoge.concat("fuga")"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default());
     println!("{}", result);
