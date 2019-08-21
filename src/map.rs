@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::types::{Native, Type};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapModule;
@@ -9,10 +9,7 @@ impl MapModule {
         let mut binds = HashMap::new();
         binds.insert("keys".to_string(), Native::Static(keys).into());
         binds.insert("values".to_string(), Native::Static(values).into());
-        Type::Map(
-            Default::default(),
-            binds
-        )
+        Type::Map(Default::default(), binds)
     }
 }
 
@@ -32,8 +29,8 @@ fn values(mut args: Vec<Type>) -> Type {
 
 #[test]
 fn test_keys() {
-    use crate::token::Source;
     use crate::eval::eval_source;
+    use crate::token::Source;
     use std::str::FromStr;
 
     let ast = r#"
@@ -49,8 +46,8 @@ Map.keys(map)[0]"#;
 
 #[test]
 fn test_values() {
-    use crate::token::Source;
     use crate::eval::eval_source;
+    use crate::token::Source;
     use std::str::FromStr;
 
     let ast = r#"
