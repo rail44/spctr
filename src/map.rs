@@ -1,5 +1,5 @@
 use crate::types::{Native, Type};
-use crate::{list, Env};
+use crate::{Env};
 
 use std::cell::RefCell;
 use std::collections::HashMap;

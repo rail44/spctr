@@ -1,6 +1,6 @@
-use crate::map;
-use crate::types::{Native, Type};
-use std::collections::HashMap;
+
+use crate::types::{Type};
+
 
 pub fn concat(receiver: Type, args: Vec<Type>) -> Type {
     if let Type::String(base) = receiver {

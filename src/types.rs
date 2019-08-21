@@ -1,5 +1,5 @@
 use crate::eval::Evaluable;
-use crate::{list, map, string, token, Env};
+use crate::{map, string, token, Env};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -44,7 +44,7 @@ impl Type {
     pub fn get_prop(&self, name: &str) -> Type {
         match self {
             Type::Map(m) => m.get_prop(name),
-            Type::String(s) => match name {
+            Type::String(_s) => match name {
                 "concat" => Type::Native(Native::Method(Box::new(self.clone()), string::concat)),
                 _ => unreachable!(name),
             },

@@ -100,16 +100,14 @@ hoge(1)"#;
 
 #[test]
 fn test_list() {
-    use list::List;
-
     let ast = r#"[1, "hoge"]"#;
     let source = Source::from_str(ast).unwrap();
     assert!(
         eval_source(source, &mut Default::default())
-            == Type::List(List::new(vec![
+            == Type::List(vec![
                 Type::Number(1.0),
                 Type::String("hoge".to_string())
-            ]))
+            ])
     );
 }
 
