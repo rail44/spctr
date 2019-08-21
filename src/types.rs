@@ -1,5 +1,5 @@
 use crate::eval::Evaluable;
-use crate::{map, string, token, Env};
+use crate::{string, token, Env};
 
 use std::cell::RefCell;
 use std::collections::HashMap;

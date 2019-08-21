@@ -1,5 +1,5 @@
 use crate::eval::eval_source;
-use crate::map;
+
 use crate::token::Source;
 use crate::types::{Native, Type};
 use std::str::FromStr;

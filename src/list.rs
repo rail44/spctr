@@ -1,4 +1,4 @@
-use crate::map;
+
 use crate::types::{Native, Type};
 use std::collections::HashMap;
 use std::iter::Iterator;
