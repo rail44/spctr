@@ -1,5 +1,5 @@
 use crate::eval::Evaluable;
-use crate::{string, token, Env};
+use crate::{list, string, token, Env};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -55,6 +55,10 @@ impl Type {
             }
             Type::String(_s) => match name {
                 "concat" => Type::Native(Native::Method(Box::new(self.clone()), string::concat)),
+                _ => unreachable!(name),
+            },
+            Type::List(_v) => match name {
+                "map" => Type::Native(Native::Method(Box::new(self.clone()), list::map)),
                 _ => unreachable!(name),
             },
             _ => unreachable!(name),

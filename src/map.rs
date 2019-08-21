@@ -1,10 +1,5 @@
 use crate::types::{Native, Type};
 
-
-
-
-
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapModule;
 

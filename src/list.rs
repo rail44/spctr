@@ -1,4 +1,3 @@
-
 use crate::types::{Native, Type};
 use std::collections::HashMap;
 use std::iter::Iterator;
@@ -23,8 +22,8 @@ fn range(mut args: Vec<Type>) -> Type {
     panic!();
 }
 
-pub fn map(mut args: Vec<Type>) -> Type {
-    if let Type::List(l) = args.remove(0) {
+pub fn map(receiver: Type, mut args: Vec<Type>) -> Type {
+    if let Type::List(l) = receiver {
         let f = args.remove(0);
         return Type::List(l.into_iter().map(|v| f.clone().call(vec![v])).collect());
     }
