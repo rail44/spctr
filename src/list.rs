@@ -27,9 +27,8 @@ fn range(mut args: Vec<Type>) -> Result<Type, failure::Error> {
 pub fn map(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let l: Vec<Type> = receiver.try_into()?;
     let f = args.remove(0);
-    Ok(Type::List(
-        l.into_iter().map(|v| f.clone().call(vec![v])).collect(),
-    ))
+    let members: Result<Vec<_>, _> = l.into_iter().map(|v| f.clone().call(vec![v])).collect();
+    Ok(Type::List(members?))
 }
 
 pub fn reduce(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
@@ -37,7 +36,7 @@ pub fn reduce(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Erro
     let initial = args.remove(0);
     let f = args.remove(0);
     Ok(l.into_iter()
-        .fold(initial, |acc, v| f.clone().call(vec![acc, v])))
+        .try_fold(initial, |acc, v| f.clone().call(vec![acc, v]))?)
 }
 
 #[test]
@@ -50,6 +49,6 @@ fn test_reduce() {
 l: List.range(1, 11),
 l.reduce(0, (sum, i) => sum + i)"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default());
+    let result = eval_source(source, &mut Default::default()).unwrap();
     assert_eq!(result, Type::Number(55.0));
 }

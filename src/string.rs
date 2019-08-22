@@ -36,7 +36,7 @@ fn test_split() {
 hoge: "HOGE,hoge",
 hoge.split(",")"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default());
+    let result = eval_source(source, &mut Default::default()).unwrap();
     assert_eq!(
         result,
         Type::List(vec![

@@ -1,10 +1,15 @@
 use crate::types::Type;
 use crate::{json, list, map, token, Env};
 use std::cell::RefCell;
+use std::convert::TryInto;
 use std::iter::IntoIterator;
 use std::rc::Rc;
 
-pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
+pub trait Evaluable {
+    fn eval(self, env: &mut Env) -> Result<Type, failure::Error>;
+}
+
+pub fn eval_source(mut source: token::Source, env: &mut Env) -> Result<Type, failure::Error> {
     if let Some(expression) = source.expressions.pop() {
         source
             .binds
@@ -23,30 +28,26 @@ pub fn eval_source(mut source: token::Source, env: &mut Env) -> Type {
         return expression.eval(&mut env);
     }
 
-    Type::Map(env.clone(), source.binds)
+    Ok(Type::Map(env.clone(), source.binds))
 }
 
 impl Evaluable for token::Source {
-    fn eval(self, env: &mut Env) -> Type {
+    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
         eval_source(self, env)
     }
 }
 
-pub trait Evaluable {
-    fn eval(self, env: &mut Env) -> Type;
-}
-
 impl Evaluable for token::Expression {
-    fn eval(self, env: &mut Env) -> Type {
+    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
         use token::Expression::*;
         match self {
             Comparison(c) => c.eval(env),
-            Function(arg_names, expression) => Type::Function(
+            Function(arg_names, expression) => Ok(Type::Function(
                 env.clone(),
                 arg_names,
                 Box::new(Type::Unevaluated(*expression)),
-            ),
-            If(cond, cons, alt) => match cond.eval(env) {
+            )),
+            If(cond, cons, alt) => match cond.eval(env)? {
                 Type::Boolean(true) => cons.eval(env),
                 Type::Boolean(false) => alt.eval(env),
                 _ => panic!(),
@@ -56,93 +57,90 @@ impl Evaluable for token::Expression {
 }
 
 impl Evaluable for token::Comparison {
-    fn eval(self, env: &mut Env) -> Type {
-        let mut base = self.left.eval(env);
+    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+        let mut base = self.left.eval(env)?;
 
         for right in self.rights {
             use token::ComparisonKind::*;
-            let value = right.value.eval(env);
+            let value = right.value.eval(env)?;
             match right.kind {
                 Equal => base = Type::Boolean(base == value),
                 NotEqual => base = Type::Boolean(base != value),
             }
         }
-        base
+        Ok(base)
     }
 }
 
 impl Evaluable for token::Additive {
-    fn eval(self, env: &mut Env) -> Type {
-        let left = self.left.eval(env);
+    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+        let left = self.left.eval(env)?;
 
         if self.rights.is_empty() {
-            return left;
+            return Ok(left);
         }
 
-        if let Type::Number(mut base) = left {
-            for right in self.rights {
-                use token::AdditiveKind::*;
-                if let Type::Number(value) = right.value.eval(env) {
-                    match right.kind {
-                        Add => base += value,
-                        Sub => base -= value,
-                    }
-                    continue;
-                }
-                panic!("not a number");
-            }
-            return Type::Number(base);
+        let mut base: f64 = left.try_into()?;
+
+        for right in self.rights {
+            use token::AdditiveKind::*;
+            let value: f64 = right.value.eval(env)?.try_into()?;
+
+            match right.kind {
+                Add => base += value,
+                Sub => base -= value,
+            };
         }
-        panic!("not a number");
+
+        return Ok(Type::Number(base));
     }
 }
 
 impl Evaluable for token::Multitive {
-    fn eval(self, env: &mut Env) -> Type {
-        let left = self.left.clone().eval(env);
+    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+        let left = self.left.clone().eval(env)?;
 
         if self.rights.is_empty() {
-            return left;
+            return Ok(left);
         }
 
-        if let Type::Number(mut base) = left {
-            for right in self.rights {
-                if let Type::Number(value) = right.value.clone().eval(env) {
-                    use token::MultitiveKind::*;
-                    match right.kind {
-                        Mul => base *= value,
-                        Div => base /= value,
-                        Surplus => base %= value,
-                    }
-                    continue;
-                }
-                panic!("not a number: {:?}", right);
+        let mut base: f64 = left.try_into()?;
+
+        for right in self.rights {
+            use token::MultitiveKind::*;
+
+            let value: f64 = right.value.eval(env)?.try_into()?;
+
+            match right.kind {
+                Mul => base *= value,
+                Div => base /= value,
+                Surplus => base %= value,
             }
-            return Type::Number(base);
         }
-        panic!("not a number: {:?}", self.left.clone());
+        return Ok(Type::Number(base));
     }
 }
 
 impl Evaluable for token::Primary {
-    fn eval(mut self, env: &mut Env) -> Type {
-        let mut base = self.0.remove(0).eval(env);
+    fn eval(mut self, env: &mut Env) -> Result<Type, failure::Error> {
+        let mut base = self.0.remove(0).eval(env)?;
 
         for right in self.0 {
             if let token::Atom::Indentify(accessor) = right.base {
-                base = base.get_prop(&accessor);
+                base = base.get_prop(&accessor)?;
 
                 for right in right.rights {
                     use token::PrimaryPartRight::*;
                     match right {
-                        Indexing(arg) => match arg.eval(env) {
-                            Type::String(s) => base = base.get_prop(&s),
-                            Type::Number(n) => base = base.indexing(n as i32),
+                        Indexing(arg) => match arg.eval(env)? {
+                            Type::String(s) => base = base.get_prop(&s)?,
+                            Type::Number(n) => base = base.indexing(n as i32)?,
                             _ => panic!(),
                         },
                         Calling(expressions) => {
-                            base =
-                                base.call(expressions.into_iter().map(|e| e.eval(env)).collect());
+                            let args: Result<Vec<_>, _> =
+                                expressions.into_iter().map(|e| e.eval(env)).collect();
+                            base = base.call(args?)?;
                         }
                     }
                 }
@@ -150,42 +148,47 @@ impl Evaluable for token::Primary {
             }
             panic!();
         }
-        base
+        Ok(base)
     }
 }
 
 impl Evaluable for token::PrimaryPart {
-    fn eval(self, env: &mut Env) -> Type {
-        let mut base = self.base.eval(env);
+    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+        let mut base = self.base.eval(env)?;
 
         for right in self.rights {
             use token::PrimaryPartRight::*;
             match right {
-                Indexing(arg) => match arg.eval(env) {
-                    Type::String(s) => base = base.get_prop(&s),
-                    Type::Number(n) => base = base.indexing(n as i32),
+                Indexing(arg) => match arg.eval(env)? {
+                    Type::String(s) => base = base.get_prop(&s)?,
+                    Type::Number(n) => base = base.indexing(n as i32)?,
                     _ => panic!(),
                 },
                 Calling(expressions) => {
-                    base = base.call(expressions.into_iter().map(|e| e.eval(env)).collect());
+                    let args: Result<Vec<_>, _> =
+                        expressions.into_iter().map(|e| e.eval(env)).collect();
+                    base = base.call(args?)?;
                 }
             }
         }
-        base
+        Ok(base)
     }
 }
 
 impl Evaluable for token::Atom {
-    fn eval(self, env: &mut Env) -> Type {
+    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
         use token::Atom::*;
-        match self {
+        Ok(match self {
             Number(f) => Type::Number(f),
             String(s) => Type::String(s),
-            Parenthesis(a) => a.eval(env),
-            Block(s) => s.eval(env),
+            Parenthesis(a) => a.eval(env)?,
+            Block(s) => s.eval(env)?,
             Null => Type::Null,
-            Indentify(s) => env.get_value(&s),
-            List(v) => Type::List(v.into_iter().map(|e| e.eval(env)).collect()),
-        }
+            Indentify(s) => env.get_value(&s)?,
+            List(v) => {
+                let members: Result<Vec<_>, _> = v.into_iter().map(|e| e.eval(env)).collect();
+                Type::List(members?)
+            }
+        })
     }
 }

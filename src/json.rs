@@ -28,10 +28,7 @@ impl std::fmt::Display for JsonModule {
 
 fn parse(mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let s: String = args.pop().unwrap().try_into()?;
-    Ok(eval_source(
-        Source::from_str(&s).unwrap(),
-        &mut Default::default(),
-    ))
+    eval_source(Source::from_str(&s).unwrap(), &mut Default::default())
 }
 
 #[test]
@@ -42,7 +39,7 @@ json: Json.parse(json_string),
 json.hoge[2]"#;
 
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default());
+    let result = eval_source(source, &mut Default::default()).unwrap();
     println!("{}", result);
     assert!(result == Type::Null);
 }

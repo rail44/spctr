@@ -24,11 +24,11 @@ pub struct Env {
 }
 
 impl Env {
-    fn get_value(&mut self, name: &str) -> Type {
+    fn get_value(&mut self, name: &str) -> Result<Type, failure::Error> {
         if let Some(binded) = self.binds.remove(name) {
-            let value = binded.eval(self);
+            let value = binded.eval(self)?;
             self.binds.insert(name.to_string(), value.clone());
-            return value;
+            return Ok(value);
         }
         self.parent.as_ref().unwrap().borrow_mut().get_value(name)
     }
@@ -56,12 +56,12 @@ fn main() -> Result<(), failure::Error> {
 
         println!(
             "{}",
-            eval_source(source, &mut Default::default()).call(vec![Type::String(s)])
+            eval_source(source, &mut Default::default())?.call(vec![Type::String(s)])?
         );
         return Ok(());
     }
 
-    println!("{}", eval_source(source, &mut Default::default()));
+    println!("{}", eval_source(source, &mut Default::default())?);
     Ok(())
 }
 
@@ -70,7 +70,7 @@ fn test_indexing_1() {
     let ast = r#"[1, 3][1]"#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()),
+        eval_source(source, &mut Default::default()).unwrap(),
         Type::Number(3.0)
     );
 }
@@ -87,7 +87,7 @@ hoge[key]"#;
 
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()),
+        eval_source(source, &mut Default::default()).unwrap(),
         Type::String("bar".to_string())
     );
 }
@@ -102,7 +102,7 @@ hoge: (fuga) => {
 hoge(1)"#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()),
+        eval_source(source, &mut Default::default()).unwrap(),
         Type::Number(2.0)
     );
 }
@@ -112,7 +112,7 @@ fn test_list() {
     let ast = r#"[1, "hoge"]"#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()),
+        eval_source(source, &mut Default::default()).unwrap(),
         Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())])
     );
 }
@@ -128,7 +128,7 @@ obj: fn("prefix-"),
 
 obj.hoge.concat(" ", obj.fuga)"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default());
+    let result = eval_source(source, &mut Default::default()).unwrap();
     assert_eq!(result, Type::String("prefix-hoge prefix-fuga".to_string()));
 }
 
@@ -138,7 +138,7 @@ fn test_string_concat() {
 hoge: "hoge",
 hoge.concat("fuga")"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default());
+    let result = eval_source(source, &mut Default::default()).unwrap();
     assert_eq!(result, Type::String("hogefuga".to_string()));
 }
 
@@ -155,7 +155,7 @@ hoge.baz
 "#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()),
+        eval_source(source, &mut Default::default()).unwrap(),
         Type::Number(35.0)
     );
 }

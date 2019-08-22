@@ -48,7 +48,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn get_prop(&self, name: &str) -> Type {
+    pub fn get_prop(&self, name: &str) -> Result<Type, failure::Error> {
         match self {
             Type::Map(env, m) => {
                 let mut child = Env {
@@ -58,27 +58,39 @@ impl Type {
                 child.get_value(name)
             }
             Type::String(_s) => match name {
-                "concat" => Type::Native(Native::Method(Box::new(self.clone()), string::concat)),
-                "split" => Type::Native(Native::Method(Box::new(self.clone()), string::split)),
-                _ => unreachable!(name),
+                "concat" => Ok(Type::Native(Native::Method(
+                    Box::new(self.clone()),
+                    string::concat,
+                ))),
+                "split" => Ok(Type::Native(Native::Method(
+                    Box::new(self.clone()),
+                    string::split,
+                ))),
+                _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
             Type::List(_v) => match name {
-                "map" => Type::Native(Native::Method(Box::new(self.clone()), list::map)),
-                "reduce" => Type::Native(Native::Method(Box::new(self.clone()), list::reduce)),
-                _ => unreachable!(name),
+                "map" => Ok(Type::Native(Native::Method(
+                    Box::new(self.clone()),
+                    list::map,
+                ))),
+                "reduce" => Ok(Type::Native(Native::Method(
+                    Box::new(self.clone()),
+                    list::reduce,
+                ))),
+                _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
-            _ => unreachable!(name),
+            _ => Err(format_err!("{} has no prop `{}`", self, name)),
         }
     }
 
-    pub fn indexing(&self, n: i32) -> Type {
+    pub fn indexing(&self, n: i32) -> Result<Type, failure::Error> {
         match self {
-            Type::List(vec) => vec[n as usize].clone(),
-            _ => unreachable!(),
+            Type::List(vec) => Ok(vec[n as usize].clone()),
+            _ => Err(format_err!("{} has no index {}", self, n)),
         }
     }
 
-    pub fn call(self, args: Vec<Type>) -> Type {
+    pub fn call(self, args: Vec<Type>) -> Result<Type, failure::Error> {
         match self {
             Type::Function(inner_env, arg_names, expression) => {
                 let mut binds = HashMap::new();
@@ -91,15 +103,15 @@ impl Type {
                 };
                 expression.eval(&mut env)
             }
-            Type::Native(n) => n.call(args).unwrap(),
-            _ => unreachable!(),
+            Type::Native(n) => n.call(args),
+            _ => Err(format_err!("{} is not callable", self)),
         }
     }
 
-    pub fn eval(self, env: &mut Env) -> Type {
+    pub fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
         match self {
             Type::Unevaluated(expression) => expression.eval(env),
-            _ => self,
+            _ => Ok(self),
         }
     }
 }

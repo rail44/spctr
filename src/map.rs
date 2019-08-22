@@ -23,9 +23,8 @@ fn keys(mut args: Vec<Type>) -> Result<Type, failure::Error> {
 
 fn values(mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let (mut env, m): Map = args.pop().unwrap().try_into()?;
-    Ok(Type::List(
-        m.into_iter().map(|(_, v)| v.eval(&mut env)).collect(),
-    ))
+    let members: Result<Vec<_>, _> = m.into_iter().map(|(_, v)| v.eval(&mut env)).collect();
+    Ok(Type::List(members?))
 }
 
 #[test]
@@ -40,7 +39,7 @@ map: {
 },
 Map.keys(map)[0]"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default());
+    let result = eval_source(source, &mut Default::default()).unwrap();
     assert_eq!(result, Type::String("hoge".to_string()));
 }
 
@@ -56,6 +55,6 @@ map: {
 },
 Map.values(map)[0]"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default());
+    let result = eval_source(source, &mut Default::default()).unwrap();
     assert_eq!(result, Type::String("HOGE".to_string()));
 }
