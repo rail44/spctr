@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::convert::TryInto;
 use std::iter::IntoIterator;
 use std::rc::Rc;
+use failure::format_err;
 
 pub trait Evaluable {
     fn eval(self, env: &mut Env) -> Result<Type, failure::Error>;
@@ -47,10 +48,13 @@ impl Evaluable for token::Expression {
                 arg_names,
                 Box::new(Type::Unevaluated(*expression)),
             )),
-            If(cond, cons, alt) => match cond.eval(env)? {
-                Type::Boolean(true) => cons.eval(env),
-                Type::Boolean(false) => alt.eval(env),
-                _ => panic!(),
+            If(cond, cons, alt) => {
+                let v = cond.eval(env)?;
+                match v {
+                    Type::Boolean(true) => cons.eval(env),
+                    Type::Boolean(false) => alt.eval(env),
+                    _ => Err(format_err!("conditional expression was evaluated to {}, not bool", v)) 
+                }
             },
         }
     }
@@ -132,11 +136,14 @@ impl Evaluable for token::Primary {
                 for right in right.rights {
                     use token::PrimaryPartRight::*;
                     match right {
-                        Indexing(arg) => match arg.eval(env)? {
-                            Type::String(s) => base = base.get_prop(&s)?,
-                            Type::Number(n) => base = base.indexing(n as i32)?,
-                            _ => panic!(),
-                        },
+                        Indexing(arg) => {
+                            let v = arg.eval(env)?;
+                            match v {
+                                Type::String(s) => base = base.get_prop(&s)?,
+                                Type::Number(n) => base = base.indexing(n as i32)?,
+                                _ => Err(format_err!("{} is not indexable", v))?,
+                            }
+                        }
                         Calling(expressions) => {
                             let args: Result<Vec<_>, _> =
                                 expressions.into_iter().map(|e| e.eval(env)).collect();
@@ -159,11 +166,14 @@ impl Evaluable for token::PrimaryPart {
         for right in self.rights {
             use token::PrimaryPartRight::*;
             match right {
-                Indexing(arg) => match arg.eval(env)? {
-                    Type::String(s) => base = base.get_prop(&s)?,
-                    Type::Number(n) => base = base.indexing(n as i32)?,
-                    _ => panic!(),
-                },
+                Indexing(arg) => {
+                    let v = arg.eval(env)?;
+                    match v {
+                        Type::String(s) => base = base.get_prop(&s)?,
+                        Type::Number(n) => base = base.indexing(n as i32)?,
+                        _ => Err(format_err!("{} is not indexable", v))?,
+                    }
+                }
                 Calling(expressions) => {
                     let args: Result<Vec<_>, _> =
                         expressions.into_iter().map(|e| e.eval(env)).collect();

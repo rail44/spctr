@@ -16,6 +16,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 use token::Source;
 use types::Type;
+use failure::format_err;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Env {
@@ -30,7 +31,12 @@ impl Env {
             self.binds.insert(name.to_string(), value.clone());
             return Ok(value);
         }
-        self.parent.as_ref().unwrap().borrow_mut().get_value(name)
+
+        if let Some(p) = self.parent.as_ref() {
+            return p.borrow_mut().get_value(name);
+        }
+
+        Err(format_err!("Could not find bind `{}`", name))
     }
 }
 

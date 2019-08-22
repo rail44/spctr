@@ -4,16 +4,11 @@ use std::iter::Iterator;
 
 pub fn concat(receiver: Type, args: Vec<Type>) -> Result<Type, failure::Error> {
     let base: String = receiver.try_into()?;
-    let rights: String = args
+    let rights: Result<String, failure::Error> = args
         .into_iter()
-        .map(|s| {
-            if let Type::String(s) = s {
-                return s;
-            }
-            panic!();
-        })
+        .map(|s| -> Result<String, _> { s.try_into() })
         .collect();
-    Ok(Type::String(format!("{}{}", base, rights)))
+    Ok(Type::String(format!("{}{}", base, rights?)))
 }
 
 pub fn split(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
