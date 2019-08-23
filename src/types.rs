@@ -68,7 +68,7 @@ impl Type {
                 ))),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
-            Type::List(_v) => match name {
+            Type::List(v) => match name {
                 "map" => Ok(Type::Native(Native::Method(
                     Box::new(self.clone()),
                     list::map,
@@ -85,6 +85,7 @@ impl Type {
                     Box::new(self.clone()),
                     list::filter,
                 ))),
+                "count" => Ok(Type::Number(v.len() as f64)),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
             _ => Err(format_err!("{} has no prop `{}`", self, name)),
