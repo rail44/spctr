@@ -1,4 +1,4 @@
-use crate::types::{Native, Type};
+use crate::types::{FunctionBody, Type};
 use crate::Env;
 use std::convert::TryInto;
 use std::iter::Iterator;
@@ -9,13 +9,18 @@ pub struct ListModule;
 impl ListModule {
     pub fn get_value() -> Type {
         let mut env = Env::default();
-        env.binds
-            .insert("range".to_string(), Native::Static(range).into());
+        env.binds.insert(
+            "range".to_string(),
+            Type::Function(
+                env.clone(),
+                FunctionBody::Native(Box::new(Type::Null), range).into(),
+            ),
+        );
         Type::Map(env)
     }
 }
 
-fn range(mut args: Vec<Type>) -> Result<Type, failure::Error> {
+fn range(_: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let start: f64 = args.remove(0).try_into()?;
     let end: f64 = args.remove(0).try_into()?;
     Ok(Type::List(
