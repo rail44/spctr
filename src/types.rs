@@ -81,6 +81,10 @@ impl Type {
                     Box::new(self.clone()),
                     list::find,
                 ))),
+                "filter" => Ok(Type::Native(Native::Method(
+                    Box::new(self.clone()),
+                    list::filter,
+                ))),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
             _ => Err(format_err!("{} has no prop `{}`", self, name)),
