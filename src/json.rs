@@ -1,7 +1,7 @@
 use crate::eval::eval_source;
-
 use crate::token::Source;
 use crate::types::{Native, Type};
+use crate::Env;
 use std::convert::TryInto;
 use std::str::FromStr;
 
@@ -10,13 +10,11 @@ pub struct JsonModule;
 
 impl JsonModule {
     pub fn get_value() -> Type {
-        Type::Map(
-            Default::default(),
-            [("parse".to_string(), Native::Static(parse).into())]
-                .iter()
-                .cloned()
-                .collect(),
-        )
+        let mut env = Env::default();
+        env.binds
+            .insert("parse".to_string(), Native::Static(parse).into());
+
+        Type::Map(env)
     }
 }
 

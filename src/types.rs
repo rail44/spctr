@@ -32,14 +32,12 @@ impl Into<Type> for Native {
     }
 }
 
-pub type Map = (Env, HashMap<String, Type>);
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Number(f64),
     String(String),
     List(Vec<Type>),
-    Map(Env, HashMap<String, Type>),
+    Map(Env),
     Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
     Native(Native),
@@ -48,15 +46,9 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn get_prop(&self, name: &str) -> Result<Type, failure::Error> {
+    pub fn get_prop(&mut self, name: &str) -> Result<Type, failure::Error> {
         match self {
-            Type::Map(env, m) => {
-                let mut child = Env {
-                    binds: m.clone(),
-                    parent: Some(Rc::new(RefCell::new(env.clone()))),
-                };
-                child.get_value(name)
-            }
+            Type::Map(env) => env.clone().get_value(name),
             Type::String(_s) => match name {
                 "concat" => Ok(Type::Native(Native::Method(
                     Box::new(self.clone()),
@@ -158,12 +150,12 @@ impl TryInto<f64> for Type {
     }
 }
 
-impl TryInto<Map> for Type {
+impl TryInto<Env> for Type {
     type Error = failure::Error;
 
-    fn try_into(self) -> Result<Map, Self::Error> {
-        if let Type::Map(env, map) = self {
-            return Ok((env, map));
+    fn try_into(self) -> Result<Env, Self::Error> {
+        if let Type::Map(env) = self {
+            return Ok(env);
         }
         Err(format_err!("{} is not Map", self))
     }
@@ -185,7 +177,7 @@ impl std::fmt::Display for Type {
         match self {
             Type::Number(f) => write!(formatter, "{}", f),
             Type::String(s) => write!(formatter, "\"{}\"", s),
-            Type::Map(_env, m) => write!(formatter, "{:?}", m),
+            Type::Map(env) => write!(formatter, "{:?}", env),
             Type::List(vec) => {
                 let v: Vec<String> = vec.iter().map(|e| format!("{}", e).to_string()).collect();
                 write!(formatter, "[{}]", v.join(", "))

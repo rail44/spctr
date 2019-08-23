@@ -1,5 +1,5 @@
-use crate::types::{Map, Native, Type};
-use std::collections::HashMap;
+use crate::types::{Native, Type};
+use crate::Env;
 use std::convert::TryInto;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7,23 +7,33 @@ pub struct MapModule;
 
 impl MapModule {
     pub fn get_value() -> Type {
-        let mut binds = HashMap::new();
-        binds.insert("keys".to_string(), Native::Static(keys).into());
-        binds.insert("values".to_string(), Native::Static(values).into());
-        Type::Map(Default::default(), binds)
+        let mut env = Env::default();
+        env.binds
+            .insert("keys".to_string(), Native::Static(keys).into());
+        env.binds
+            .insert("values".to_string(), Native::Static(values).into());
+        Type::Map(env)
     }
 }
 
 fn keys(mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let (_env, m): Map = args.pop().unwrap().try_into()?;
+    let env: Env = args.pop().unwrap().try_into()?;
     Ok(Type::List(
-        m.into_iter().map(|(k, _)| Type::String(k)).collect(),
+        env.binds
+            .into_iter()
+            .map(|(k, _)| Type::String(k))
+            .collect(),
     ))
 }
 
 fn values(mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let (mut env, m): Map = args.pop().unwrap().try_into()?;
-    let members: Result<Vec<_>, _> = m.into_iter().map(|(_, v)| v.eval(&mut env)).collect();
+    let mut env: Env = args.pop().unwrap().try_into()?;
+    let members: Result<Vec<_>, _> = env
+        .binds
+        .clone()
+        .into_iter()
+        .map(|(_, v)| v.eval(&mut env))
+        .collect();
     Ok(Type::List(members?))
 }
 

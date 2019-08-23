@@ -1,5 +1,5 @@
 use crate::types::{Native, Type};
-use std::collections::HashMap;
+use crate::Env;
 use std::convert::TryInto;
 use std::iter::Iterator;
 
@@ -8,9 +8,10 @@ pub struct ListModule;
 
 impl ListModule {
     pub fn get_value() -> Type {
-        let mut binds = HashMap::new();
-        binds.insert("range".to_string(), Native::Static(range).into());
-        Type::Map(Default::default(), binds)
+        let mut env = Env::default();
+        env.binds
+            .insert("range".to_string(), Native::Static(range).into());
+        Type::Map(env)
     }
 }
 
