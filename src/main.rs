@@ -8,6 +8,7 @@ mod types;
 
 use clap::{App, Arg};
 use eval::eval_source;
+use failure::format_err;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
@@ -16,7 +17,6 @@ use std::rc::Rc;
 use std::str::FromStr;
 use token::Source;
 use types::Type;
-use failure::format_err;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Env {

@@ -64,12 +64,6 @@ pub fn filter(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Erro
     Ok(Type::List(result))
 }
 
-pub fn count(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let l: Vec<Type> = receiver.try_into()?;
-    Ok(Type::Number(l.len() as f64))
-}
-
-
 #[test]
 fn test_reduce() {
     use crate::eval::eval_source;
@@ -109,11 +103,14 @@ l: List.range(1, 11),
 l.filter((i) => i % 3 = 0)"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default()).unwrap();
-    assert_eq!(result, Type::List(vec![
-        Type::Number(3.0),
-        Type::Number(6.0),
-        Type::Number(9.0)
-    ]));
+    assert_eq!(
+        result,
+        Type::List(vec![
+            Type::Number(3.0),
+            Type::Number(6.0),
+            Type::Number(9.0)
+        ])
+    );
 }
 
 #[test]

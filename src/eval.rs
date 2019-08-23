@@ -1,10 +1,10 @@
 use crate::types::Type;
 use crate::{json, list, map, token, Env};
+use failure::format_err;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::iter::IntoIterator;
 use std::rc::Rc;
-use failure::format_err;
 
 pub trait Evaluable {
     fn eval(self, env: &mut Env) -> Result<Type, failure::Error>;
@@ -53,9 +53,12 @@ impl Evaluable for token::Expression {
                 match v {
                     Type::Boolean(true) => cons.eval(env),
                     Type::Boolean(false) => alt.eval(env),
-                    _ => Err(format_err!("conditional expression was evaluated to {}, not bool", v)) 
+                    _ => Err(format_err!(
+                        "conditional expression was evaluated to {}, not bool",
+                        v
+                    )),
                 }
-            },
+            }
         }
     }
 }
