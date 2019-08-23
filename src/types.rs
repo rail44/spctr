@@ -77,6 +77,10 @@ impl Type {
                     Box::new(self.clone()),
                     list::reduce,
                 ))),
+                "find" => Ok(Type::Native(Native::Method(
+                    Box::new(self.clone()),
+                    list::find,
+                ))),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
             _ => Err(format_err!("{} has no prop `{}`", self, name)),
@@ -157,6 +161,17 @@ impl TryInto<Map> for Type {
             return Ok((env, map));
         }
         Err(format_err!("{} is not Map", self))
+    }
+}
+
+impl TryInto<bool> for Type {
+    type Error = failure::Error;
+
+    fn try_into(self) -> Result<bool, Self::Error> {
+        if let Type::Boolean(b) = self {
+            return Ok(b);
+        }
+        Err(format_err!("{} is not Boolean", self))
     }
 }
 

@@ -39,6 +39,18 @@ pub fn reduce(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Erro
         .try_fold(initial, |acc, v| f.clone().call(vec![acc, v]))?)
 }
 
+pub fn find(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let l: Vec<Type> = receiver.try_into()?;
+    let f = args.remove(0);
+    for v in l {
+        let b: bool = f.clone().call(vec![v.clone()])?.try_into()?;
+        if b {
+            return Ok(v);
+        }
+    }
+    Ok(Type::Null)
+}
+
 #[test]
 fn test_reduce() {
     use crate::eval::eval_source;
@@ -51,4 +63,18 @@ l.reduce(0, (sum, i) => sum + i)"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default()).unwrap();
     assert_eq!(result, Type::Number(55.0));
+}
+
+#[test]
+fn test_find() {
+    use crate::eval::eval_source;
+    use crate::token::Source;
+    use std::str::FromStr;
+
+    let ast = r#"
+l: List.range(3, 11),
+l.find((i) => i % 7 = 1)"#;
+    let source = Source::from_str(ast).unwrap();
+    let result = eval_source(source, &mut Default::default()).unwrap();
+    assert_eq!(result, Type::Number(8.0));
 }
