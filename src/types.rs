@@ -1,10 +1,8 @@
 use crate::eval::Evaluable;
 use crate::{list, string, token, Env};
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::rc::Rc;
 
 use failure::format_err;
 
@@ -28,8 +26,8 @@ pub enum Type {
 
 impl Type {
     pub fn get_prop(&mut self, name: &str) -> Result<Type, failure::Error> {
-        let mut env: Env = Default::default();
-        env.binds.insert("_".to_string(), self.clone());
+        let env: Env = Default::default();
+        env.insert("_".to_string(), self.clone());
         match self {
             Type::Map(env) => env.clone().get_value(name),
             Type::String(_s) => match name {
@@ -63,10 +61,7 @@ impl Type {
                 for (v, n) in args.into_iter().zip(arg_names.iter()) {
                     binds.insert(n.clone(), v);
                 }
-                let mut env = Env {
-                    binds,
-                    parent: Some(Rc::new(RefCell::new(inner_env))),
-                };
+                let mut env = inner_env.spawn_child(binds);
                 body.eval(&mut env)
             }
             Type::Function(env, FunctionBody::Native(f)) => f(env, args),
@@ -74,7 +69,7 @@ impl Type {
         }
     }
 
-    pub fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+    pub fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         match self {
             Type::Unevaluated(expression) => expression.eval(env),
             _ => Ok(self),

@@ -10,8 +10,8 @@ pub struct JsonModule;
 
 impl JsonModule {
     pub fn get_value() -> Type {
-        let mut env = Env::default();
-        env.binds.insert(
+        let env = Env::default();
+        env.insert(
             "parse".to_string(),
             Type::Function(env.clone(), FunctionBody::Native(parse).into()),
         );

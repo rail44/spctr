@@ -20,20 +20,34 @@ use types::Type;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Env {
-    binds: HashMap<String, Type>,
-    parent: Option<Rc<RefCell<Env>>>,
+    binds: Rc<RefCell<HashMap<String, Type>>>,
+    parent: Option<Box<Env>>,
 }
 
 impl Env {
-    fn get_value(&mut self, name: &str) -> Result<Type, failure::Error> {
-        if let Some(binded) = self.binds.remove(name) {
+    fn spawn_child(&self, binds: HashMap<String, Type>) -> Self {
+        Env {
+            binds: Rc::new(RefCell::new(binds)),
+            parent: Some(Box::new(self.clone())),
+        }
+    }
+
+    fn insert(&self, name: String, v: Type) {
+        self.binds.borrow_mut().insert(name, v);
+    }
+
+    fn get_value(&self, name: &str) -> Result<Type, failure::Error> {
+        let binded = self.binds.borrow_mut().remove(name);
+        if let Some(binded) = binded {
             let value = binded.eval(self)?;
-            self.binds.insert(name.to_string(), value.clone());
+            self.binds
+                .borrow_mut()
+                .insert(name.to_string(), value.clone());
             return Ok(value);
         }
 
         if let Some(p) = self.parent.as_ref() {
-            return p.borrow_mut().get_value(name);
+            return p.get_value(name);
         }
 
         Err(format_err!("Could not find bind `{}`", name))

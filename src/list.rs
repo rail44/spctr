@@ -8,8 +8,8 @@ pub struct ListModule;
 
 impl ListModule {
     pub fn get_value() -> Type {
-        let mut env = Env::default();
-        env.binds.insert(
+        let env = Env::default();
+        env.insert(
             "range".to_string(),
             Type::Function(env.clone(), FunctionBody::Native(range).into()),
         );
@@ -27,14 +27,14 @@ fn range(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     ))
 }
 
-pub fn map(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub fn map(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = args.remove(0);
     let members: Result<Vec<_>, _> = l.into_iter().map(|v| f.clone().call(vec![v])).collect();
     Ok(Type::List(members?))
 }
 
-pub fn reduce(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub fn reduce(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let initial = args.remove(0);
     let f = args.remove(0);
@@ -42,7 +42,7 @@ pub fn reduce(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error>
         .try_fold(initial, |acc, v| f.clone().call(vec![acc, v]))?)
 }
 
-pub fn find(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub fn find(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = args.remove(0);
     for v in l {
@@ -54,7 +54,7 @@ pub fn find(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     Ok(Type::Null)
 }
 
-pub fn filter(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub fn filter(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = args.remove(0);
     let mut result = vec![];

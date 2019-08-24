@@ -1,42 +1,34 @@
 use crate::types::{FunctionBody, Type};
 use crate::{json, list, map, token, Env};
 use failure::format_err;
-use std::cell::RefCell;
 use std::convert::TryInto;
 use std::iter::IntoIterator;
-use std::rc::Rc;
 
 pub trait Evaluable {
-    fn eval(self, env: &mut Env) -> Result<Type, failure::Error>;
+    fn eval(self, env: &Env) -> Result<Type, failure::Error>;
 }
 
-pub fn eval_source(mut source: token::Source, env: &mut Env) -> Result<Type, failure::Error> {
-    let mut env = Env {
-        binds: source.binds,
-        parent: Some(Rc::new(RefCell::new(env.clone()))),
-    };
+pub fn eval_source(mut source: token::Source, env: &Env) -> Result<Type, failure::Error> {
+    let env = env.spawn_child(source.binds);
 
     if let Some(expression) = source.expressions.pop() {
-        env.binds
-            .insert("List".to_string(), list::ListModule::get_value());
-        env.binds
-            .insert("Map".to_string(), map::MapModule::get_value());
-        env.binds
-            .insert("Json".to_string(), json::JsonModule::get_value());
-        return expression.eval(&mut env);
+        env.insert("List".to_string(), list::ListModule::get_value());
+        env.insert("Map".to_string(), map::MapModule::get_value());
+        env.insert("Json".to_string(), json::JsonModule::get_value());
+        return expression.eval(&env);
     }
 
     Ok(Type::Map(env))
 }
 
 impl Evaluable for token::Source {
-    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+    fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         eval_source(self, env)
     }
 }
 
 impl Evaluable for token::Expression {
-    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+    fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         use token::Expression::*;
         match self {
             Comparison(c) => c.eval(env),
@@ -60,7 +52,7 @@ impl Evaluable for token::Expression {
 }
 
 impl Evaluable for token::Comparison {
-    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+    fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         let mut base = self.left.eval(env)?;
 
         for right in self.rights {
@@ -76,7 +68,7 @@ impl Evaluable for token::Comparison {
 }
 
 impl Evaluable for token::Additive {
-    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+    fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         let left = self.left.eval(env)?;
 
         if self.rights.is_empty() {
@@ -100,7 +92,7 @@ impl Evaluable for token::Additive {
 }
 
 impl Evaluable for token::Multitive {
-    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+    fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         let left = self.left.clone().eval(env)?;
 
         if self.rights.is_empty() {
@@ -125,7 +117,7 @@ impl Evaluable for token::Multitive {
 }
 
 impl Evaluable for token::Primary {
-    fn eval(mut self, env: &mut Env) -> Result<Type, failure::Error> {
+    fn eval(mut self, env: &Env) -> Result<Type, failure::Error> {
         let mut base = self.0.remove(0).eval(env)?;
 
         for right in self.0 {
@@ -159,7 +151,7 @@ impl Evaluable for token::Primary {
 }
 
 impl Evaluable for token::PrimaryPart {
-    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+    fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         let mut base = self.base.eval(env)?;
 
         for right in self.rights {
@@ -185,7 +177,7 @@ impl Evaluable for token::PrimaryPart {
 }
 
 impl Evaluable for token::Atom {
-    fn eval(self, env: &mut Env) -> Result<Type, failure::Error> {
+    fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         use token::Atom::*;
         Ok(match self {
             Number(f) => Type::Number(f),

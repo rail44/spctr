@@ -7,12 +7,12 @@ pub struct MapModule;
 
 impl MapModule {
     pub fn get_value() -> Type {
-        let mut env = Env::default();
-        env.binds.insert(
+        let env = Env::default();
+        env.insert(
             "keys".to_string(),
             Type::Function(env.clone(), FunctionBody::Native(keys).into()),
         );
-        env.binds.insert(
+        env.insert(
             "values".to_string(),
             Type::Function(env.clone(), FunctionBody::Native(values).into()),
         );
@@ -22,22 +22,19 @@ impl MapModule {
 
 fn keys(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let env: Env = args.pop().unwrap().try_into()?;
+    let binds = env.binds.borrow();
     Ok(Type::List(
-        env.binds
-            .into_iter()
-            .map(|(k, _)| Type::String(k))
+        binds
+            .iter()
+            .map(|(k, _)| Type::String(k.to_string()))
             .collect(),
     ))
 }
 
 fn values(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let mut env: Env = args.pop().unwrap().try_into()?;
-    let members: Result<Vec<_>, _> = env
-        .binds
-        .clone()
-        .into_iter()
-        .map(|(_, v)| v.eval(&mut env))
-        .collect();
+    let env: Env = args.pop().unwrap().try_into()?;
+    let binds = env.binds.borrow();
+    let members: Result<Vec<_>, _> = binds.iter().map(|(_, v)| v.clone().eval(&env)).collect();
     Ok(Type::List(members?))
 }
 
