@@ -1,4 +1,4 @@
-use crate::types::{Native, Type};
+use crate::types::{FunctionBody, Type};
 use crate::Env;
 use std::convert::TryInto;
 
@@ -8,15 +8,19 @@ pub struct MapModule;
 impl MapModule {
     pub fn get_value() -> Type {
         let mut env = Env::default();
-        env.binds
-            .insert("keys".to_string(), Native::Static(keys).into());
-        env.binds
-            .insert("values".to_string(), Native::Static(values).into());
+        env.binds.insert(
+            "keys".to_string(),
+            Type::Function(env.clone(), FunctionBody::Native(keys).into()),
+        );
+        env.binds.insert(
+            "values".to_string(),
+            Type::Function(env.clone(), FunctionBody::Native(values).into()),
+        );
         Type::Map(env)
     }
 }
 
-fn keys(mut args: Vec<Type>) -> Result<Type, failure::Error> {
+fn keys(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let env: Env = args.pop().unwrap().try_into()?;
     Ok(Type::List(
         env.binds
@@ -26,7 +30,7 @@ fn keys(mut args: Vec<Type>) -> Result<Type, failure::Error> {
     ))
 }
 
-fn values(mut args: Vec<Type>) -> Result<Type, failure::Error> {
+fn values(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let mut env: Env = args.pop().unwrap().try_into()?;
     let members: Result<Vec<_>, _> = env
         .binds

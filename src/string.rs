@@ -1,9 +1,10 @@
 use crate::types::Type;
+use crate::Env;
 use std::convert::TryInto;
 use std::iter::Iterator;
 
-pub fn concat(receiver: Type, args: Vec<Type>) -> Result<Type, failure::Error> {
-    let base: String = receiver.try_into()?;
+pub fn concat(mut env: Env, args: Vec<Type>) -> Result<Type, failure::Error> {
+    let base: String = env.get_value("_")?.try_into()?;
     let rights: Result<String, failure::Error> = args
         .into_iter()
         .map(|s| -> Result<String, _> { s.try_into() })
@@ -11,8 +12,8 @@ pub fn concat(receiver: Type, args: Vec<Type>) -> Result<Type, failure::Error> {
     Ok(Type::String(format!("{}{}", base, rights?)))
 }
 
-pub fn split(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let base: String = receiver.try_into()?;
+pub fn split(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let base: String = env.get_value("_")?.try_into()?;
     let pat: String = args.remove(0).try_into()?;
     Ok(Type::List(
         base.split(&pat)

@@ -1,4 +1,4 @@
-use crate::types::Type;
+use crate::types::{FunctionBody, Type};
 use crate::{json, list, map, token, Env};
 use failure::format_err;
 use std::cell::RefCell;
@@ -42,8 +42,7 @@ impl Evaluable for token::Expression {
             Comparison(c) => c.eval(env),
             Function(arg_names, expression) => Ok(Type::Function(
                 env.clone(),
-                arg_names,
-                Box::new(Type::Unevaluated(*expression)),
+                FunctionBody::Expression(arg_names, Box::new(Type::Unevaluated(*expression))),
             )),
             If(cond, cons, alt) => {
                 let v = cond.eval(env)?;
