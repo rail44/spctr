@@ -11,16 +11,13 @@ impl ListModule {
         let mut env = Env::default();
         env.binds.insert(
             "range".to_string(),
-            Type::Function(
-                env.clone(),
-                FunctionBody::Native(Box::new(Type::Null), range).into(),
-            ),
+            Type::Function(env.clone(), FunctionBody::Native(range).into()),
         );
         Type::Map(env)
     }
 }
 
-fn range(_: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+fn range(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let start: f64 = args.remove(0).try_into()?;
     let end: f64 = args.remove(0).try_into()?;
     Ok(Type::List(
@@ -30,23 +27,23 @@ fn range(_: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     ))
 }
 
-pub fn map(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let l: Vec<Type> = receiver.try_into()?;
+pub fn map(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = args.remove(0);
     let members: Result<Vec<_>, _> = l.into_iter().map(|v| f.clone().call(vec![v])).collect();
     Ok(Type::List(members?))
 }
 
-pub fn reduce(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let l: Vec<Type> = receiver.try_into()?;
+pub fn reduce(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let initial = args.remove(0);
     let f = args.remove(0);
     Ok(l.into_iter()
         .try_fold(initial, |acc, v| f.clone().call(vec![acc, v]))?)
 }
 
-pub fn find(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let l: Vec<Type> = receiver.try_into()?;
+pub fn find(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = args.remove(0);
     for v in l {
         let b: bool = f.clone().call(vec![v.clone()])?.try_into()?;
@@ -57,8 +54,8 @@ pub fn find(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error>
     Ok(Type::Null)
 }
 
-pub fn filter(receiver: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let l: Vec<Type> = receiver.try_into()?;
+pub fn filter(mut env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+    let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = args.remove(0);
     let mut result = vec![];
     for v in l {

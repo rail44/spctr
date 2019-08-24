@@ -13,10 +13,7 @@ impl JsonModule {
         let mut env = Env::default();
         env.binds.insert(
             "parse".to_string(),
-            Type::Function(
-                env.clone(),
-                FunctionBody::Native(Box::new(Type::Null), parse).into(),
-            ),
+            Type::Function(env.clone(), FunctionBody::Native(parse).into()),
         );
 
         Type::Map(env)
@@ -29,7 +26,7 @@ impl std::fmt::Display for JsonModule {
     }
 }
 
-fn parse(_: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+fn parse(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let s: String = args.pop().unwrap().try_into()?;
     eval_source(Source::from_str(&s).unwrap(), &mut Default::default())
 }

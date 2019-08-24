@@ -10,23 +10,17 @@ impl MapModule {
         let mut env = Env::default();
         env.binds.insert(
             "keys".to_string(),
-            Type::Function(
-                env.clone(),
-                FunctionBody::Native(Box::new(Type::Null), keys).into(),
-            ),
+            Type::Function(env.clone(), FunctionBody::Native(keys).into()),
         );
         env.binds.insert(
             "values".to_string(),
-            Type::Function(
-                env.clone(),
-                FunctionBody::Native(Box::new(Type::Null), values).into(),
-            ),
+            Type::Function(env.clone(), FunctionBody::Native(values).into()),
         );
         Type::Map(env)
     }
 }
 
-fn keys(_: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+fn keys(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let env: Env = args.pop().unwrap().try_into()?;
     Ok(Type::List(
         env.binds
@@ -36,7 +30,7 @@ fn keys(_: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     ))
 }
 
-fn values(_: Type, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+fn values(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
     let mut env: Env = args.pop().unwrap().try_into()?;
     let members: Result<Vec<_>, _> = env
         .binds

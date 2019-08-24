@@ -11,10 +11,7 @@ use failure::format_err;
 #[derive(Debug, Clone, PartialEq)]
 pub enum FunctionBody {
     Expression(Vec<String>, Box<Type>),
-    Native(
-        Box<Type>,
-        fn(Type, Vec<Type>) -> Result<Type, failure::Error>,
-    ),
+    Native(fn(Env, Vec<Type>) -> Result<Type, failure::Error>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,36 +28,20 @@ pub enum Type {
 
 impl Type {
     pub fn get_prop(&mut self, name: &str) -> Result<Type, failure::Error> {
+        let mut env: Env = Default::default();
+        env.binds.insert("_".to_string(), self.clone());
         match self {
             Type::Map(env) => env.clone().get_value(name),
             Type::String(_s) => match name {
-                "concat" => Ok(Type::Function(
-                    Default::default(),
-                    FunctionBody::Native(Box::new(self.clone()), string::concat),
-                )),
-                "split" => Ok(Type::Function(
-                    Default::default(),
-                    FunctionBody::Native(Box::new(self.clone()), string::split),
-                )),
+                "concat" => Ok(Type::Function(env, FunctionBody::Native(string::concat))),
+                "split" => Ok(Type::Function(env, FunctionBody::Native(string::split))),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
             Type::List(v) => match name {
-                "map" => Ok(Type::Function(
-                    Default::default(),
-                    FunctionBody::Native(Box::new(self.clone()), list::map),
-                )),
-                "reduce" => Ok(Type::Function(
-                    Default::default(),
-                    FunctionBody::Native(Box::new(self.clone()), list::reduce),
-                )),
-                "find" => Ok(Type::Function(
-                    Default::default(),
-                    FunctionBody::Native(Box::new(self.clone()), list::find),
-                )),
-                "filter" => Ok(Type::Function(
-                    Default::default(),
-                    FunctionBody::Native(Box::new(self.clone()), list::filter),
-                )),
+                "map" => Ok(Type::Function(env, FunctionBody::Native(list::map))),
+                "reduce" => Ok(Type::Function(env, FunctionBody::Native(list::reduce))),
+                "find" => Ok(Type::Function(env, FunctionBody::Native(list::find))),
+                "filter" => Ok(Type::Function(env, FunctionBody::Native(list::filter))),
                 "count" => Ok(Type::Number(v.len() as f64)),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
@@ -88,7 +69,7 @@ impl Type {
                 };
                 body.eval(&mut env)
             }
-            Type::Function(_inner_env, FunctionBody::Native(receiver, f)) => f(*receiver, args),
+            Type::Function(env, FunctionBody::Native(f)) => f(env, args),
             _ => Err(format_err!("{} is not callable", self)),
         }
     }
