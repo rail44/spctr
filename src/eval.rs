@@ -1,4 +1,5 @@
 use crate::types::Type;
+use crate::Unevaluated;
 use crate::{json, list, map, token, Env};
 use failure::format_err;
 use std::convert::TryInto;
@@ -9,7 +10,7 @@ pub trait Evaluable {
 }
 
 pub fn eval_source(mut source: token::Source, env: &Env) -> Result<Type, failure::Error> {
-    let mut child = Env::new(source.binds);
+    let mut child = Env::new(source.bind_map, Default::default());
     if let Some(base) = source.base {
         let base: Env = env.get_value(&base)?.try_into()?;
         child.parents.push(base);
@@ -18,9 +19,6 @@ pub fn eval_source(mut source: token::Source, env: &Env) -> Result<Type, failure
     child.parents.push(env.clone());
 
     if let Some(expression) = source.expressions.pop() {
-        child.insert("List".to_string(), list::ListModule::get_value());
-        child.insert("Map".to_string(), map::MapModule::get_value());
-        child.insert("Json".to_string(), json::JsonModule::get_value());
         return expression.eval(&child);
     }
 
@@ -41,7 +39,7 @@ impl Evaluable for token::Expression {
             Function(arg_names, expression) => Ok(Type::Function(
                 env.clone(),
                 arg_names,
-                Box::new(Type::Unevaluated(*expression)),
+                Unevaluated::Expression(*expression),
             )),
             If(cond, cons, alt) => {
                 let v = cond.eval(env)?;

@@ -1,15 +1,15 @@
 use crate::types::Type;
-use crate::Env;
+use crate::{Env, Unevaluated};
 use std::convert::TryInto;
 use std::iter::Iterator;
 
-pub const CONCAT: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+pub const CONCAT: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let base: String = env.get_value("_")?.try_into()?;
     let other: String = env.get_value("other")?.try_into()?;
     Ok(Type::String(format!("{}{}", base, other)))
 });
 
-pub const SPLIT: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+pub const SPLIT: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let base: String = env.get_value("_")?.try_into()?;
     let pat: String = env.get_value("pat")?.try_into()?;
     Ok(Type::List(
@@ -29,7 +29,7 @@ fn test_split() {
 hoge: "HOGE,hoge",
 hoge.split(",")"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(
         result,
         Type::List(vec![

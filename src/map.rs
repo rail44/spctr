@@ -1,5 +1,6 @@
 use crate::types::Type;
 use crate::Env;
+use crate::Unevaluated;
 use std::convert::TryInto;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -10,19 +11,19 @@ impl MapModule {
         let env = Env::default();
         env.insert(
             "keys".to_string(),
-            Type::Function(env.clone(), vec!["map".to_string()], Box::new(KEYS)),
+            Type::Function(env.clone(), vec!["map".to_string()], KEYS),
         );
         env.insert(
             "values".to_string(),
-            Type::Function(env.clone(), vec!["map".to_string()], Box::new(VALUES)),
+            Type::Function(env.clone(), vec!["map".to_string()], VALUES),
         );
         Type::Map(env)
     }
 }
 
-const KEYS: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+const KEYS: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let map: Env = env.get_value("map")?.try_into()?;
-    let binds = map.binds.borrow();
+    let binds = map.bind_map.borrow();
     Ok(Type::List(
         binds
             .iter()
@@ -31,9 +32,9 @@ const KEYS: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
     ))
 });
 
-const VALUES: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+const VALUES: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let map: Env = env.get_value("map")?.try_into()?;
-    let binds = map.binds.borrow();
+    let binds = map.bind_map.borrow();
     let members: Result<Vec<_>, _> = binds.iter().map(|(_, v)| v.clone().eval(&env)).collect();
     Ok(Type::List(members?))
 });
@@ -50,7 +51,7 @@ map: {
 },
 Map.keys(map)[0]"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(result, Type::String("hoge".to_string()));
 }
 
@@ -66,6 +67,6 @@ map: {
 },
 Map.values(map)[0]"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(result, Type::String("HOGE".to_string()));
 }

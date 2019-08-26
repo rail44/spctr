@@ -6,6 +6,7 @@ mod string;
 mod token;
 mod types;
 
+use crate::eval::Evaluable;
 use clap::{App, Arg};
 use eval::eval_source;
 use failure::format_err;
@@ -18,29 +19,62 @@ use std::str::FromStr;
 use token::Source;
 use types::Type;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Unevaluated {
+    Expression(token::Expression),
+    Native(fn(Env) -> Result<Type, failure::Error>),
+}
+
+impl Unevaluated {
+    pub fn eval(self, env: &Env) -> Result<Type, failure::Error> {
+        match self {
+            Unevaluated::Expression(expression) => expression.eval(env),
+            Unevaluated::Native(f) => f(env.clone()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Env {
-    binds: Rc<RefCell<HashMap<String, Type>>>,
+    bind_map: Rc<RefCell<HashMap<String, Unevaluated>>>,
+    evaluated_map: Rc<RefCell<HashMap<String, Type>>>,
     parents: Vec<Env>,
 }
 
 impl Env {
-    fn new(binds: HashMap<String, Type>) -> Self {
+    fn new(bind_map: HashMap<String, Unevaluated>, evaluated_map: HashMap<String, Type>) -> Self {
         Env {
-            binds: Rc::new(RefCell::new(binds)),
+            bind_map: Rc::new(RefCell::new(bind_map)),
+            evaluated_map: Rc::new(RefCell::new(evaluated_map)),
             parents: vec![],
         }
     }
 
+    fn root() -> Self {
+        let mut evaluated_map = HashMap::new();
+        evaluated_map.insert("List".to_string(), list::ListModule::get_value());
+        evaluated_map.insert("Map".to_string(), map::MapModule::get_value());
+        evaluated_map.insert("Json".to_string(), json::JsonModule::get_value());
+
+        Env {
+            evaluated_map: Rc::new(RefCell::new(evaluated_map)),
+            ..Default::default()
+        }
+    }
+
     fn insert(&self, name: String, v: Type) {
-        self.binds.borrow_mut().insert(name, v);
+        self.evaluated_map.borrow_mut().insert(name, v);
     }
 
     fn get_value(&self, name: &str) -> Result<Type, failure::Error> {
-        let binded = self.binds.borrow_mut().remove(name);
+        if let Some(evaluated) = self.evaluated_map.borrow().get(name) {
+            return Ok(evaluated.clone());
+        }
+
+        let binded = self.bind_map.borrow_mut().remove(name);
         if let Some(binded) = binded {
             let value = binded.eval(self)?;
-            self.binds
+            self.evaluated_map
                 .borrow_mut()
                 .insert(name.to_string(), value.clone());
             return Ok(value);
@@ -79,12 +113,12 @@ fn main() -> Result<(), failure::Error> {
 
         println!(
             "{}",
-            eval_source(source, &mut Default::default())?.call(vec![Type::String(s)])?
+            eval_source(source, &mut Env::root())?.call(vec![Type::String(s)])?
         );
         return Ok(());
     }
 
-    println!("{}", eval_source(source, &mut Default::default())?);
+    println!("{}", eval_source(source, &mut Env::root())?);
     Ok(())
 }
 
@@ -93,7 +127,7 @@ fn test_indexing_1() {
     let ast = r#"[1, 3][1]"#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()).unwrap(),
+        eval_source(source, &mut Env::root()).unwrap(),
         Type::Number(3.0)
     );
 }
@@ -110,7 +144,7 @@ hoge[key]"#;
 
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()).unwrap(),
+        eval_source(source, &mut Env::root()).unwrap(),
         Type::String("bar".to_string())
     );
 }
@@ -125,7 +159,7 @@ hoge: (fuga) => {
 hoge(1)"#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()).unwrap(),
+        eval_source(source, &mut Env::root()).unwrap(),
         Type::Number(2.0)
     );
 }
@@ -135,7 +169,7 @@ fn test_list() {
     let ast = r#"[1, "hoge"]"#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()).unwrap(),
+        eval_source(source, &mut Env::root()).unwrap(),
         Type::List(vec![Type::Number(1.0), Type::String("hoge".to_string())])
     );
 }
@@ -151,7 +185,7 @@ obj: fn("prefix-"),
 
 obj.hoge.concat(" ").concat(obj.fuga)"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(result, Type::String("prefix-hoge prefix-fuga".to_string()));
 }
 
@@ -161,7 +195,7 @@ fn test_string_concat() {
 hoge: "hoge",
 hoge.concat("fuga")"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(result, Type::String("hogefuga".to_string()));
 }
 
@@ -178,7 +212,7 @@ hoge.baz
 "#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()).unwrap(),
+        eval_source(source, &mut Env::root()).unwrap(),
         Type::Number(35.0)
     );
 }
@@ -199,7 +233,7 @@ map_2: {
 "#;
     let source = Source::from_str(ast).unwrap();
     assert_eq!(
-        eval_source(source, &mut Default::default()).unwrap(),
+        eval_source(source, &mut Env::root()).unwrap(),
         Type::List(vec![
             Type::String("HOGE".to_string()),
             Type::String("FUGA".to_string())

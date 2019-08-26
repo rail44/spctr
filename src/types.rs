@@ -1,5 +1,5 @@
 use crate::eval::Evaluable;
-use crate::{list, string, token, Env};
+use crate::{list, string, token, Env, Unevaluated};
 
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -12,10 +12,8 @@ pub enum Type {
     String(String),
     List(Vec<Type>),
     Map(Env),
-    Function(Env, Vec<String>, Box<Type>),
+    Function(Env, Vec<String>, Unevaluated),
     Boolean(bool),
-    Unevaluated(token::Expression),
-    Native(fn(Env) -> Result<Type, failure::Error>),
     Null,
 }
 
@@ -29,36 +27,20 @@ impl Type {
                 "concat" => Ok(Type::Function(
                     env,
                     vec!["other".to_string()],
-                    Box::new(string::CONCAT),
+                    string::CONCAT,
                 )),
-                "split" => Ok(Type::Function(
-                    env,
-                    vec!["pat".to_string()],
-                    Box::new(string::SPLIT),
-                )),
+                "split" => Ok(Type::Function(env, vec!["pat".to_string()], string::SPLIT)),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
             Type::List(v) => match name {
-                "map" => Ok(Type::Function(
-                    env,
-                    vec!["f".to_string()],
-                    Box::new(list::MAP),
-                )),
+                "map" => Ok(Type::Function(env, vec!["f".to_string()], list::MAP)),
                 "reduce" => Ok(Type::Function(
                     env,
                     vec!["initial".to_string(), "f".to_string()],
-                    Box::new(list::REDUCE),
+                    list::REDUCE,
                 )),
-                "find" => Ok(Type::Function(
-                    env,
-                    vec!["f".to_string()],
-                    Box::new(list::FIND),
-                )),
-                "filter" => Ok(Type::Function(
-                    env,
-                    vec!["f".to_string()],
-                    Box::new(list::FILTER),
-                )),
+                "find" => Ok(Type::Function(env, vec!["f".to_string()], list::FIND)),
+                "filter" => Ok(Type::Function(env, vec!["f".to_string()], list::FILTER)),
                 "count" => Ok(Type::Number(v.len() as f64)),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
@@ -76,23 +58,15 @@ impl Type {
     pub fn call(self, args: Vec<Type>) -> Result<Type, failure::Error> {
         match self {
             Type::Function(inner_env, arg_names, body) => {
-                let mut binds = HashMap::new();
+                let mut evaluated = HashMap::new();
                 for (v, n) in args.into_iter().zip(arg_names.iter()) {
-                    binds.insert(n.clone(), v);
+                    evaluated.insert(n.clone(), v);
                 }
-                let mut env = Env::new(binds);
+                let mut env = Env::new(Default::default(), evaluated);
                 env.parents.push(inner_env);
                 body.eval(&mut env)
             }
             _ => Err(format_err!("{} is not callable", self)),
-        }
-    }
-
-    pub fn eval(self, env: &Env) -> Result<Type, failure::Error> {
-        match self {
-            Type::Unevaluated(expression) => expression.eval(env),
-            Type::Native(f) => f(env.clone()),
-            _ => Ok(self),
         }
     }
 }
@@ -164,8 +138,6 @@ impl std::fmt::Display for Type {
             }
             Type::Function(_, _, _) => write!(formatter, "[function]"),
             Type::Boolean(b) => write!(formatter, "{}", b),
-            Type::Unevaluated(expression) => write!(formatter, "[Unevaluated {:?}]", expression),
-            Type::Native(f) => write!(formatter, "[Native {:?}]", f),
             Type::Null => write!(formatter, "null"),
         }
     }

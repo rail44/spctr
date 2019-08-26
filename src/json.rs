@@ -2,6 +2,7 @@ use crate::eval::eval_source;
 use crate::token::Source;
 use crate::types::Type;
 use crate::Env;
+use crate::Unevaluated;
 use std::convert::TryInto;
 use std::str::FromStr;
 
@@ -13,7 +14,7 @@ impl JsonModule {
         let env = Env::default();
         env.insert(
             "parse".to_string(),
-            Type::Function(env.clone(), vec!["s".to_string()], Box::new(PARSE)),
+            Type::Function(env.clone(), vec!["s".to_string()], PARSE),
         );
 
         Type::Map(env)
@@ -26,7 +27,7 @@ impl std::fmt::Display for JsonModule {
     }
 }
 
-pub const PARSE: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+pub const PARSE: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let s: String = env.get_value("s")?.try_into()?;
     eval_source(Source::from_str(&s).unwrap(), &mut Default::default())
 });
@@ -39,7 +40,7 @@ json: Json.parse(json_string),
 json.hoge[2]"#;
 
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     println!("{}", result);
     assert!(result == Type::Null);
 }

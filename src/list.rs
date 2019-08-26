@@ -1,5 +1,5 @@
 use crate::types::Type;
-use crate::Env;
+use crate::{Env, Unevaluated};
 use std::convert::TryInto;
 use std::iter::Iterator;
 
@@ -14,14 +14,14 @@ impl ListModule {
             Type::Function(
                 env.clone(),
                 vec!["start".to_string(), "end".to_string()],
-                Box::new(RANGE),
+                RANGE,
             ),
         );
         Type::Map(env)
     }
 }
 
-pub const RANGE: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+pub const RANGE: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let start: f64 = env.get_value("start")?.try_into()?;
     let end: f64 = env.get_value("end")?.try_into()?;
     Ok(Type::List(
@@ -31,14 +31,14 @@ pub const RANGE: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> 
     ))
 });
 
-pub const MAP: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+pub const MAP: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = env.get_value("f")?;
     let members: Result<Vec<_>, _> = l.into_iter().map(|v| f.clone().call(vec![v])).collect();
     Ok(Type::List(members?))
 });
 
-pub const REDUCE: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+pub const REDUCE: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let initial = env.get_value("initial")?;
     let f = env.get_value("f")?;
@@ -46,7 +46,7 @@ pub const REDUCE: Type = Type::Native(|env: Env| -> Result<Type, failure::Error>
         .try_fold(initial, |acc, v| f.clone().call(vec![acc, v]))?)
 });
 
-pub const FIND: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+pub const FIND: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = env.get_value("f")?;
     for v in l {
@@ -58,7 +58,7 @@ pub const FIND: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
     Ok(Type::Null)
 });
 
-pub const FILTER: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+pub const FILTER: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
     let f = env.get_value("f")?;
     let mut result = vec![];
@@ -81,7 +81,7 @@ fn test_reduce() {
 l: List.range(1, 11),
 l.reduce(0, (sum, i) => sum + i)"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(result, Type::Number(55.0));
 }
 
@@ -95,7 +95,7 @@ fn test_find() {
 l: List.range(3, 11),
 l.find((i) => i % 7 = 1)"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(result, Type::Number(8.0));
 }
 
@@ -109,7 +109,7 @@ fn test_filter() {
 l: List.range(1, 11),
 l.filter((i) => i % 3 = 0)"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(
         result,
         Type::List(vec![
@@ -130,6 +130,6 @@ fn test_count() {
 l: List.range(1, 11),
 l.filter((i) => i % 3 = 0).count"#;
     let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Default::default()).unwrap();
+    let result = eval_source(source, &mut Env::root()).unwrap();
     assert_eq!(result, Type::Number(3.0));
 }

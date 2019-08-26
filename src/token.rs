@@ -1,3 +1,4 @@
+use crate::Unevaluated;
 use failure::err_msg;
 use pest::iterators::{Pair, Pairs};
 use pest::Parser as PestParser;
@@ -80,7 +81,7 @@ impl TryFrom<Pair<'_, Rule>> for Expression {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
     pub base: Option<String>,
-    pub binds: HashMap<String, crate::Type>,
+    pub bind_map: HashMap<String, Unevaluated>,
     pub expressions: Vec<Expression>,
 }
 
@@ -94,7 +95,7 @@ impl FromStr for Source {
 impl TryFrom<Pairs<'_, Rule>> for Source {
     type Error = failure::Error;
     fn try_from(pairs: Pairs<Rule>) -> Result<Self, Self::Error> {
-        let mut binds = HashMap::new();
+        let mut bind_map = HashMap::new();
         let mut expressions = vec![];
         let mut base = None;
         for pair in pairs {
@@ -117,7 +118,7 @@ impl TryFrom<Pairs<'_, Rule>> for Source {
                         .next()
                         .unwrap()
                         .try_into()?;
-                    binds.insert(name.to_string(), crate::Type::Unevaluated(expression));
+                    bind_map.insert(name.to_string(), Unevaluated::Expression(expression));
                 }
                 Rule::expression => {
                     expressions.push(Expression::try_from(pair.into_inner().next().unwrap())?)
@@ -127,7 +128,7 @@ impl TryFrom<Pairs<'_, Rule>> for Source {
         }
         Ok(Source {
             base,
-            binds,
+            bind_map,
             expressions,
         })
     }
