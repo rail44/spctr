@@ -9,16 +9,22 @@ pub trait Evaluable {
 }
 
 pub fn eval_source(mut source: token::Source, env: &Env) -> Result<Type, failure::Error> {
-    let env = env.spawn_child(source.binds);
-
-    if let Some(expression) = source.expressions.pop() {
-        env.insert("List".to_string(), list::ListModule::get_value());
-        env.insert("Map".to_string(), map::MapModule::get_value());
-        env.insert("Json".to_string(), json::JsonModule::get_value());
-        return expression.eval(&env);
+    let mut child = Env::new(source.binds);
+    if let Some(base) = source.base {
+        let base: Env = env.get_value(&base)?.try_into()?;
+        child.parents.push(base);
     }
 
-    Ok(Type::Map(env))
+    child.parents.push(env.clone());
+
+    if let Some(expression) = source.expressions.pop() {
+        child.insert("List".to_string(), list::ListModule::get_value());
+        child.insert("Map".to_string(), map::MapModule::get_value());
+        child.insert("Json".to_string(), json::JsonModule::get_value());
+        return expression.eval(&child);
+    }
+
+    Ok(Type::Map(child))
 }
 
 impl Evaluable for token::Source {

@@ -21,14 +21,14 @@ use types::Type;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Env {
     binds: Rc<RefCell<HashMap<String, Type>>>,
-    parent: Option<Box<Env>>,
+    parents: Vec<Env>,
 }
 
 impl Env {
-    fn spawn_child(&self, binds: HashMap<String, Type>) -> Self {
+    fn new(binds: HashMap<String, Type>) -> Self {
         Env {
             binds: Rc::new(RefCell::new(binds)),
-            parent: Some(Box::new(self.clone())),
+            parents: vec![],
         }
     }
 
@@ -46,8 +46,11 @@ impl Env {
             return Ok(value);
         }
 
-        if let Some(p) = self.parent.as_ref() {
-            return p.get_value(name);
+        for p in self.parents.iter() {
+            match p.get_value(name) {
+                Ok(v) => return Ok(v),
+                Err(_) => (),
+            }
         }
 
         Err(format_err!("Could not find bind `{}`", name))
@@ -177,5 +180,29 @@ hoge.baz
     assert_eq!(
         eval_source(source, &mut Default::default()).unwrap(),
         Type::Number(35.0)
+    );
+}
+
+#[test]
+fn test_spread() {
+    let ast = r#"
+map: {
+  hoge: "HOGE"
+},
+
+map_2: {
+    ...map,
+    fuga: "FUGA"
+},
+
+[map_2.hoge, map_2.fuga]
+"#;
+    let source = Source::from_str(ast).unwrap();
+    assert_eq!(
+        eval_source(source, &mut Default::default()).unwrap(),
+        Type::List(vec![
+            Type::String("HOGE".to_string()),
+            Type::String("FUGA".to_string())
+        ])
     );
 }
