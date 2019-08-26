@@ -1,6 +1,6 @@
 use crate::eval::eval_source;
 use crate::token::Source;
-use crate::types::{FunctionBody, Type};
+use crate::types::Type;
 use crate::Env;
 use std::convert::TryInto;
 use std::str::FromStr;
@@ -13,7 +13,7 @@ impl JsonModule {
         let env = Env::default();
         env.insert(
             "parse".to_string(),
-            Type::Function(env.clone(), FunctionBody::Native(parse).into()),
+            Type::Function(env.clone(), vec!["s".to_string()], Box::new(PARSE)),
         );
 
         Type::Map(env)
@@ -26,10 +26,10 @@ impl std::fmt::Display for JsonModule {
     }
 }
 
-fn parse(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let s: String = args.pop().unwrap().try_into()?;
+pub const PARSE: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+    let s: String = env.get_value("s")?.try_into()?;
     eval_source(Source::from_str(&s).unwrap(), &mut Default::default())
-}
+});
 
 #[test]
 fn test_access_json() {

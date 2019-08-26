@@ -1,4 +1,4 @@
-use crate::types::{FunctionBody, Type};
+use crate::types::Type;
 use crate::Env;
 use std::convert::TryInto;
 use std::iter::Iterator;
@@ -11,40 +11,44 @@ impl ListModule {
         let env = Env::default();
         env.insert(
             "range".to_string(),
-            Type::Function(env.clone(), FunctionBody::Native(range).into()),
+            Type::Function(
+                env.clone(),
+                vec!["start".to_string(), "end".to_string()],
+                Box::new(RANGE),
+            ),
         );
         Type::Map(env)
     }
 }
 
-fn range(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let start: f64 = args.remove(0).try_into()?;
-    let end: f64 = args.remove(0).try_into()?;
+pub const RANGE: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+    let start: f64 = env.get_value("start")?.try_into()?;
+    let end: f64 = env.get_value("end")?.try_into()?;
     Ok(Type::List(
         ((start as i32)..(end as i32))
             .map(|i| Type::Number(i.into()))
             .collect(),
     ))
-}
+});
 
-pub fn map(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub const MAP: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
-    let f = args.remove(0);
+    let f = env.get_value("f")?;
     let members: Result<Vec<_>, _> = l.into_iter().map(|v| f.clone().call(vec![v])).collect();
     Ok(Type::List(members?))
-}
+});
 
-pub fn reduce(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub const REDUCE: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
-    let initial = args.remove(0);
-    let f = args.remove(0);
+    let initial = env.get_value("initial")?;
+    let f = env.get_value("f")?;
     Ok(l.into_iter()
         .try_fold(initial, |acc, v| f.clone().call(vec![acc, v]))?)
-}
+});
 
-pub fn find(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub const FIND: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
-    let f = args.remove(0);
+    let f = env.get_value("f")?;
     for v in l {
         let b: bool = f.clone().call(vec![v.clone()])?.try_into()?;
         if b {
@@ -52,11 +56,11 @@ pub fn find(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
         }
     }
     Ok(Type::Null)
-}
+});
 
-pub fn filter(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub const FILTER: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
     let l: Vec<Type> = env.get_value("_")?.try_into()?;
-    let f = args.remove(0);
+    let f = env.get_value("f")?;
     let mut result = vec![];
     for v in l {
         let b: bool = f.clone().call(vec![v.clone()])?.try_into()?;
@@ -65,7 +69,7 @@ pub fn filter(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
         }
     }
     Ok(Type::List(result))
-}
+});
 
 #[test]
 fn test_reduce() {

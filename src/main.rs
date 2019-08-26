@@ -146,7 +146,7 @@ fn: (prefix) => {
 },
 obj: fn("prefix-"),
 
-obj.hoge.concat(" ", obj.fuga)"#;
+obj.hoge.concat(" ").concat(obj.fuga)"#;
     let source = Source::from_str(ast).unwrap();
     let result = eval_source(source, &mut Default::default()).unwrap();
     assert_eq!(result, Type::String("prefix-hoge prefix-fuga".to_string()));

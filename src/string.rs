@@ -3,24 +3,21 @@ use crate::Env;
 use std::convert::TryInto;
 use std::iter::Iterator;
 
-pub fn concat(env: Env, args: Vec<Type>) -> Result<Type, failure::Error> {
+pub const CONCAT: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
     let base: String = env.get_value("_")?.try_into()?;
-    let rights: Result<String, failure::Error> = args
-        .into_iter()
-        .map(|s| -> Result<String, _> { s.try_into() })
-        .collect();
-    Ok(Type::String(format!("{}{}", base, rights?)))
-}
+    let other: String = env.get_value("other")?.try_into()?;
+    Ok(Type::String(format!("{}{}", base, other)))
+});
 
-pub fn split(env: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
+pub const SPLIT: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
     let base: String = env.get_value("_")?.try_into()?;
-    let pat: String = args.remove(0).try_into()?;
+    let pat: String = env.get_value("pat")?.try_into()?;
     Ok(Type::List(
         base.split(&pat)
             .map(|s| Type::String(s.to_string()))
             .collect(),
     ))
-}
+});
 
 #[test]
 fn test_split() {

@@ -7,20 +7,15 @@ use std::convert::TryInto;
 use failure::format_err;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum FunctionBody {
-    Expression(Vec<String>, Box<Type>),
-    Native(fn(Env, Vec<Type>) -> Result<Type, failure::Error>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Number(f64),
     String(String),
     List(Vec<Type>),
     Map(Env),
-    Function(Env, FunctionBody),
+    Function(Env, Vec<String>, Box<Type>),
     Boolean(bool),
     Unevaluated(token::Expression),
+    Native(fn(Env) -> Result<Type, failure::Error>),
     Null,
 }
 
@@ -31,15 +26,39 @@ impl Type {
         match self {
             Type::Map(env) => env.clone().get_value(name),
             Type::String(_s) => match name {
-                "concat" => Ok(Type::Function(env, FunctionBody::Native(string::concat))),
-                "split" => Ok(Type::Function(env, FunctionBody::Native(string::split))),
+                "concat" => Ok(Type::Function(
+                    env,
+                    vec!["other".to_string()],
+                    Box::new(string::CONCAT),
+                )),
+                "split" => Ok(Type::Function(
+                    env,
+                    vec!["pat".to_string()],
+                    Box::new(string::SPLIT),
+                )),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
             Type::List(v) => match name {
-                "map" => Ok(Type::Function(env, FunctionBody::Native(list::map))),
-                "reduce" => Ok(Type::Function(env, FunctionBody::Native(list::reduce))),
-                "find" => Ok(Type::Function(env, FunctionBody::Native(list::find))),
-                "filter" => Ok(Type::Function(env, FunctionBody::Native(list::filter))),
+                "map" => Ok(Type::Function(
+                    env,
+                    vec!["f".to_string()],
+                    Box::new(list::MAP),
+                )),
+                "reduce" => Ok(Type::Function(
+                    env,
+                    vec!["initial".to_string(), "f".to_string()],
+                    Box::new(list::REDUCE),
+                )),
+                "find" => Ok(Type::Function(
+                    env,
+                    vec!["f".to_string()],
+                    Box::new(list::FIND),
+                )),
+                "filter" => Ok(Type::Function(
+                    env,
+                    vec!["f".to_string()],
+                    Box::new(list::FILTER),
+                )),
                 "count" => Ok(Type::Number(v.len() as f64)),
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
@@ -56,7 +75,7 @@ impl Type {
 
     pub fn call(self, args: Vec<Type>) -> Result<Type, failure::Error> {
         match self {
-            Type::Function(inner_env, FunctionBody::Expression(arg_names, body)) => {
+            Type::Function(inner_env, arg_names, body) => {
                 let mut binds = HashMap::new();
                 for (v, n) in args.into_iter().zip(arg_names.iter()) {
                     binds.insert(n.clone(), v);
@@ -64,7 +83,6 @@ impl Type {
                 let mut env = inner_env.spawn_child(binds);
                 body.eval(&mut env)
             }
-            Type::Function(env, FunctionBody::Native(f)) => f(env, args),
             _ => Err(format_err!("{} is not callable", self)),
         }
     }
@@ -72,6 +90,7 @@ impl Type {
     pub fn eval(self, env: &Env) -> Result<Type, failure::Error> {
         match self {
             Type::Unevaluated(expression) => expression.eval(env),
+            Type::Native(f) => f(env.clone()),
             _ => Ok(self),
         }
     }
@@ -142,9 +161,10 @@ impl std::fmt::Display for Type {
                 let v: Vec<String> = vec.iter().map(|e| format!("{}", e).to_string()).collect();
                 write!(formatter, "[{}]", v.join(", "))
             }
-            Type::Function(_, _) => write!(formatter, "[function]"),
+            Type::Function(_, _, _) => write!(formatter, "[function]"),
             Type::Boolean(b) => write!(formatter, "{}", b),
             Type::Unevaluated(expression) => write!(formatter, "[Unevaluated {:?}]", expression),
+            Type::Native(f) => write!(formatter, "[Native {:?}]", f),
             Type::Null => write!(formatter, "null"),
         }
     }

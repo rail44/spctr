@@ -1,4 +1,4 @@
-use crate::types::{FunctionBody, Type};
+use crate::types::Type;
 use crate::Env;
 use std::convert::TryInto;
 
@@ -10,33 +10,33 @@ impl MapModule {
         let env = Env::default();
         env.insert(
             "keys".to_string(),
-            Type::Function(env.clone(), FunctionBody::Native(keys).into()),
+            Type::Function(env.clone(), vec!["map".to_string()], Box::new(KEYS)),
         );
         env.insert(
             "values".to_string(),
-            Type::Function(env.clone(), FunctionBody::Native(values).into()),
+            Type::Function(env.clone(), vec!["map".to_string()], Box::new(VALUES)),
         );
         Type::Map(env)
     }
 }
 
-fn keys(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let env: Env = args.pop().unwrap().try_into()?;
-    let binds = env.binds.borrow();
+const KEYS: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+    let map: Env = env.get_value("map")?.try_into()?;
+    let binds = map.binds.borrow();
     Ok(Type::List(
         binds
             .iter()
             .map(|(k, _)| Type::String(k.to_string()))
             .collect(),
     ))
-}
+});
 
-fn values(_: Env, mut args: Vec<Type>) -> Result<Type, failure::Error> {
-    let env: Env = args.pop().unwrap().try_into()?;
-    let binds = env.binds.borrow();
+const VALUES: Type = Type::Native(|env: Env| -> Result<Type, failure::Error> {
+    let map: Env = env.get_value("map")?.try_into()?;
+    let binds = map.binds.borrow();
     let members: Result<Vec<_>, _> = binds.iter().map(|(_, v)| v.clone().eval(&env)).collect();
     Ok(Type::List(members?))
-}
+});
 
 #[test]
 fn test_keys() {
