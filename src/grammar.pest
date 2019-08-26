@@ -4,7 +4,8 @@ COMMENT = _{ "#" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
 delimiter = _{ "," }
 source = _{ SOI ~ (statement ~ (delimiter ~ statement)*)? ~ &EOI }
 
-statement = _{ bind | expression }
+spread = ${ "..." ~  identify }
+statement = _{ spread | bind | expression }
 expression = { function | _if | comparison }
 function = { "(" ~ identify ~ ("," ~ identify)* ~ ")" ~ "=>" ~ expression }
 
@@ -34,7 +35,7 @@ atom = _{
   "(" ~ parenthesis ~ ")" | block | list | literal | null | identify
 }
 
-identify = ${ (ASCII_ALPHA | "_")+ }
+identify = ${ (ASCII_ALPHA | "_" | ASCII_DIGIT)+ }
 
 null = { "null" }
 

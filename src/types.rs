@@ -80,7 +80,8 @@ impl Type {
                 for (v, n) in args.into_iter().zip(arg_names.iter()) {
                     binds.insert(n.clone(), v);
                 }
-                let mut env = inner_env.spawn_child(binds);
+                let mut env = Env::new(binds);
+                env.parents.push(inner_env);
                 body.eval(&mut env)
             }
             _ => Err(format_err!("{} is not callable", self)),

@@ -79,6 +79,7 @@ impl TryFrom<Pair<'_, Rule>> for Expression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
+    pub base: Option<String>,
     pub binds: HashMap<String, crate::Type>,
     pub expressions: Vec<Expression>,
 }
@@ -95,8 +96,12 @@ impl TryFrom<Pairs<'_, Rule>> for Source {
     fn try_from(pairs: Pairs<Rule>) -> Result<Self, Self::Error> {
         let mut binds = HashMap::new();
         let mut expressions = vec![];
+        let mut base = None;
         for pair in pairs {
             match pair.as_rule() {
+                Rule::spread => {
+                    base = Some(pair.into_inner().next().unwrap().as_str().to_string());
+                }
                 Rule::bind => {
                     let mut inner = pair.into_inner();
                     let ident = inner.next().unwrap();
@@ -120,7 +125,11 @@ impl TryFrom<Pairs<'_, Rule>> for Source {
                 _ => return Err(err_msg(format!("{:?}", pair))),
             }
         }
-        Ok(Source { binds, expressions })
+        Ok(Source {
+            base,
+            binds,
+            expressions,
+        })
     }
 }
 
