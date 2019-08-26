@@ -1,6 +1,6 @@
 use crate::types::Type;
 use crate::Unevaluated;
-use crate::{json, list, map, token, Env};
+use crate::{token, Env};
 use failure::format_err;
 use std::convert::TryInto;
 use std::iter::IntoIterator;

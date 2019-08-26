@@ -1,5 +1,4 @@
-use crate::eval::Evaluable;
-use crate::{list, string, token, Env, Unevaluated};
+use crate::{list, string, Env, Unevaluated};
 
 use std::collections::HashMap;
 use std::convert::TryInto;
