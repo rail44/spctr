@@ -130,7 +130,17 @@ impl std::fmt::Display for Type {
         match self {
             Type::Number(f) => write!(formatter, "{}", f),
             Type::String(s) => write!(formatter, "\"{}\"", s),
-            Type::Map(env) => write!(formatter, "{:?}", env),
+            Type::Map(env) => {
+                let bind_map = env.clone().bind_map.borrow().clone();
+                let pairs: Vec<String> = bind_map
+                    .keys()
+                    .map(|k| {
+                        let v = env.get_value(k).unwrap();
+                        format!("\"{}\": {}", k, v)
+                    })
+                    .collect();
+                write!(formatter, "{{{}}}", pairs.join(", "))
+            }
             Type::List(vec) => {
                 let v: Vec<String> = vec.iter().map(|e| format!("{}", e).to_string()).collect();
                 write!(formatter, "[{}]", v.join(", "))
