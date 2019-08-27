@@ -21,7 +21,10 @@ impl Type {
         let env: Env = Default::default();
         env.insert("_".to_string(), self.clone());
         match self {
-            Type::Map(env) => env.clone().get_value(name),
+            Type::Map(env) => env
+                .clone()
+                .get_value(name)
+                .map_err(|_| format_err!("{} has no prop `{}`", self, name)),
             Type::String(_s) => match name {
                 "concat" => Ok(Type::Function(
                     env,
@@ -40,7 +43,35 @@ impl Type {
                 )),
                 "find" => Ok(Type::Function(env, vec!["f".to_string()], list::FIND)),
                 "filter" => Ok(Type::Function(env, vec!["f".to_string()], list::FILTER)),
+                "concat" => Ok(Type::Function(env, vec!["other".to_string()], list::CONCAT)),
                 "count" => Ok(Type::Number(v.len() as f64)),
+                "to_iter" => {
+                    fn next(env: Env) -> Result<Type, failure::Error> {
+                        let i: f64 = env.get_value("i")?.try_into()?;
+                        let list: Vec<Type> = env.get_value("list")?.try_into()?;
+
+                        Ok(list.get(i as usize).map_or(Type::Null, |v| {
+                            let new_env: Env = Default::default();
+                            new_env.insert("list".to_string(), Type::List(list.clone()));
+                            new_env.insert("i".to_string(), Type::Number(i + 1.0));
+                            new_env
+                                .bind_map
+                                .borrow_mut()
+                                .insert("next".to_string(), Unevaluated::Native(next));
+
+                            Type::List(vec![Type::Map(new_env), v.clone()])
+                        }))
+                    }
+
+                    let new_env: Env = Default::default();
+                    new_env.insert("list".to_string(), self.clone());
+                    new_env.insert("i".to_string(), Type::Number(0.0));
+                    new_env
+                        .bind_map
+                        .borrow_mut()
+                        .insert("next".to_string(), Unevaluated::Native(next));
+                    Ok(Type::Map(new_env))
+                }
                 _ => Err(format_err!("{} has no prop `{}`", self, name)),
             },
             _ => Err(format_err!("{} has no prop `{}`", self, name)),

@@ -71,6 +71,13 @@ pub const FILTER: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, f
     Ok(Type::List(result))
 });
 
+pub const CONCAT: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
+    let mut l: Vec<Type> = env.get_value("_")?.try_into()?;
+    let mut other: Vec<Type> = env.get_value("other")?.try_into()?;
+    l.append(&mut other);
+    Ok(Type::List(l))
+});
+
 #[test]
 fn test_reduce() {
     use crate::eval::eval_source;

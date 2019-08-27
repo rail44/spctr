@@ -16,8 +16,11 @@ use std::fs;
 use std::io::{stdin, Read};
 use std::rc::Rc;
 use std::str::FromStr;
+use std::thread;
 use token::Source;
 use types::Type;
+
+const STACK_SIZE: usize = 16 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Unevaluated {
@@ -71,9 +74,10 @@ impl Env {
             return Ok(evaluated.clone());
         }
 
-        let binded = self.bind_map.borrow_mut().remove(name);
+        let bind_map = self.bind_map.borrow();
+        let binded = bind_map.get(name).clone();
         if let Some(binded) = binded {
-            let value = binded.eval(self)?;
+            let value = binded.clone().eval(self)?;
             self.evaluated_map
                 .borrow_mut()
                 .insert(name.to_string(), value.clone());
@@ -91,7 +95,7 @@ impl Env {
     }
 }
 
-fn main() -> Result<(), failure::Error> {
+fn run() -> Result<(), failure::Error> {
     let matches = App::new("spctr")
         .arg(Arg::with_name("FILE").index(1))
         .arg(Arg::with_name("input").short("c").takes_value(true))
@@ -120,6 +124,15 @@ fn main() -> Result<(), failure::Error> {
 
     println!("{}", eval_source(source, &mut Env::root())?);
     Ok(())
+}
+
+fn main() -> Result<(), failure::Error> {
+    let child = thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(run)
+        .unwrap();
+
+    child.join().unwrap()
 }
 
 #[test]
