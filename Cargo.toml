@@ -5,7 +5,7 @@ authors = ["Satoshi Amemiya <satoshi_amemiya@voyagegroup.com>"]
 edition = "2018"
 
 [dependencies]
-pest = "2.1.1"
+pest = "2.1.2"
 clap = "2.33.0"
 pest_derive = "2.1.0"
 failure = "0.1.5"
