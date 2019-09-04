@@ -5,31 +5,35 @@ delimiter = _{ "," }
 source = _{ SOI ~ (statement ~ (delimiter ~ statement)*)? ~ &EOI }
 
 spread = ${ "..." ~  identify }
-statement = _{ spread | bind | expression }
-expression = { function | _if | comparison }
-function = { "(" ~ identify ~ ("," ~ identify)* ~ ")" ~ "=>" ~ expression }
+statement = _{ spread | bind | body }
+expression = _{ function | _if | comparison }
+body = { expression }
+
+function = { "(" ~ identify ~ ("," ~ identify)* ~ ")" ~ "=>" ~ body }
 
 bind = { (identify | string_literal) ~ ":" ~ expression }
 
-comparison = { additive ~ (equal | not_equal)* }
+comparison = _{ additive ~ (equal | not_equal)* }
 equal = { "=" ~  additive }
 not_equal = { "!=" ~  additive }
 
-additive = { multitive ~ (add | sub)* }
+additive = _{ multitive ~ (add | sub)* }
 add = { "+" ~  multitive }
 sub = { "-" ~  multitive }
 
-multitive = { primary ~ (mul | div | surplus)* }
+multitive = _{ primary ~ (mul | div | surplus)* }
 mul = { "*" ~ primary }
 div = { "/" ~ primary }
 surplus = { "%" ~ primary }
+
   
-primary = { primary_part ~ ("." ~ primary_part)* }
-
-primary_part = { atom ~ (calling | indexing)* }
-
+primary = { atom ~ calling* ~ (access ~ calling*)* }
+access = { "." ~ identify }
 calling = { "(" ~ expression ~ ("," ~ expression)* ~ ")" }
-indexing = { "[" ~ expression ~ "]" }
+
+indexing = { "" }
+
+hoge = _{ atom ~ ("." ~ atom)* }
 
 atom = _{
   "(" ~ parenthesis ~ ")" | block | list | literal | null | identify
@@ -39,7 +43,7 @@ identify = ${ (ASCII_ALPHA | "_" | ASCII_DIGIT)+ }
 
 null = { "null" }
 
-parenthesis = { expression }
+parenthesis = _{ expression }
 
 list = { "[" ~ (expression ~ (delimiter ~ expression)*)? ~ "]" }
 block = { "{" ~ (statement ~ (delimiter ~ statement)*)? ~ "}" }
