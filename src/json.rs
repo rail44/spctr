@@ -1,23 +1,19 @@
-use crate::eval::eval_source;
-use crate::token::Source;
-use crate::types::Type;
-use crate::Env;
-use crate::Unevaluated;
+use crate::stack;
+use crate::stack::{Env, Function, Unevaluated, Value};
 use std::convert::TryInto;
-use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JsonModule;
 
 impl JsonModule {
-    pub fn get_value() -> Type {
+    pub fn get_value() -> Value {
         let env = Env::default();
         env.insert(
             "parse".to_string(),
-            Type::Function(env.clone(), vec!["s".to_string()], PARSE),
+            Function::new(env.clone(), vec!["s".to_string()], PARSE).into(),
         );
 
-        Type::Map(env)
+        Value::Map(env)
     }
 }
 
@@ -27,10 +23,13 @@ impl std::fmt::Display for JsonModule {
     }
 }
 
-pub const PARSE: Unevaluated = Unevaluated::Native(|env: Env| -> Result<Type, failure::Error> {
-    let s: String = env.get_value("s")?.try_into()?;
-    eval_source(Source::from_str(&s).unwrap(), &mut Default::default())
-});
+pub const PARSE: Unevaluated =
+    Unevaluated::Native(|mut env: Env| -> Result<Value, failure::Error> {
+        let s: String = env.get_value("s")?.try_into()?;
+        Ok(stack::eval(&stack::get_stack(&s)?, &mut Env::default())?
+            .pop()
+            .unwrap())
+    });
 
 #[test]
 fn test_access_json() {
@@ -39,8 +38,10 @@ json_string: "{\"hoge\": [1, 2, null]}",
 json: Json.parse(json_string),
 json.hoge[2]"#;
 
-    let source = Source::from_str(ast).unwrap();
-    let result = eval_source(source, &mut Env::root()).unwrap();
+    let result = stack::eval(&stack::get_stack(ast).unwrap(), &mut Env::root())
+        .unwrap()
+        .pop()
+        .unwrap();
     println!("{}", result);
-    assert!(result == Type::Null);
+    assert!(result == Value::Null);
 }
