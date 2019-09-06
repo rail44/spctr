@@ -50,12 +50,12 @@
           null
 
         if fn(target.next[1])
-          [
-            next_iter,
-            target.next[1]
-          ]
+          next_iter.next
 
-        next_iter.next
+        [
+          next_iter,
+          target.next[1]
+        ]
       }
     },
 
