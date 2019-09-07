@@ -1,5 +1,6 @@
 use crate::stack::{Env, Function, Unevaluated, Value};
 use std::convert::TryInto;
+use std::collections::HashMap;
 use std::iter::Iterator;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7,16 +8,17 @@ pub struct ListModule;
 
 impl ListModule {
     pub fn get_value() -> Value {
-        let env = Env::default();
-        env.insert(
+        let mut evaluated_map = HashMap::new();
+        evaluated_map.insert(
             "range".to_string(),
             Function::new(
-                env.clone(),
+                Default::default(),
                 vec!["start".to_string(), "end".to_string()],
                 RANGE,
             )
             .into(),
         );
+        let env = Env::new(Default::default(), evaluated_map);
         Value::Map(env)
     }
 }

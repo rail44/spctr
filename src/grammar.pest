@@ -32,7 +32,7 @@ calling = { "(" ~ body ~ ("," ~ body)* ~ ")" }
 indexing = { "[" ~ expression ~ "]" }
 
 atom = _{
-  "(" ~ parenthesis ~ ")" | block | list | literal | null | identify
+  "(" ~ parenthesis ~ ")" | "{" ~ parenthesis ~ "}" | block | list | literal | null | identify
 }
 
 identify = ${ (ASCII_ALPHA | "_" | ASCII_DIGIT)+ }
@@ -42,7 +42,9 @@ null = { "null" }
 parenthesis = _{ expression }
 
 list = { "[" ~ (body ~ (delimiter ~ body)*)? ~ "]" }
+
 block = { "{" ~ (statement ~ (delimiter ~ statement)*)? ~ "}" }
+
 _if = { "if" ~ body ~ body ~ body }
 literal = _{ number | string_literal }
 

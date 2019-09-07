@@ -31,26 +31,31 @@ impl PartialEq for Env {
 }
 
 impl Env {
-    pub fn root() -> Self {
-        let env = Self::default();
-
-        env.insert("List".to_string(), list::ListModule::get_value());
-        env.insert("Map".to_string(), map::MapModule::get_value());
-        env.insert("Json".to_string(), json::JsonModule::get_value());
-        env.bind(
-            "Iterator".to_string(),
-            Unevaluated::Cmd(get_stack(include_str!("iterator.spc")).unwrap()),
-        );
-
-        env
+    pub fn new(bind_map: HashMap<String, Unevaluated>, evaluated_map: HashMap<String, Value>) -> Self {
+        Self {
+            bind_map: Rc::new(RefCell::new(bind_map)),
+            evaluated_map: Rc::new(RefCell::new(evaluated_map)),
+            ..Default::default()
+        }
     }
 
     pub fn bind(&self, name: String, b: Unevaluated) {
         self.bind_map.borrow_mut().insert(name, b);
     }
 
-    pub fn insert(&self, name: String, v: Value) {
-        self.evaluated_map.borrow_mut().insert(name, v);
+    pub fn root() -> Self {
+        let mut bind_map = HashMap::new();
+        bind_map.insert(
+            "Iterator".to_string(),
+            Unevaluated::Cmd(get_stack(include_str!("iterator.spc")).unwrap()),
+        );
+
+        let mut evaluated_map = HashMap::new();
+        evaluated_map.insert("List".to_string(), list::ListModule::get_value());
+        evaluated_map.insert("Map".to_string(), map::MapModule::get_value());
+        evaluated_map.insert("Json".to_string(), json::JsonModule::get_value());
+
+        Self::new(bind_map, evaluated_map)
     }
 
     pub fn is_recursive_fn(&self, f: &Function) -> bool {
@@ -100,13 +105,13 @@ pub struct Function {
 
 impl Function {
     fn call(&self, args: &[Value]) -> Result<Value, failure::Error> {
-        let mut child: Env = Default::default();
+        let mut evaluated_map = HashMap::new();
+        for (n, v) in self.arg_name_list.iter().zip(args) {
+            evaluated_map.insert(n.to_string(), v.clone());
+        }
+        let mut child = Env::new(Default::default(), evaluated_map);
         child.parent = Some(self.inner.clone());
         child.current_fn = Some(self.clone());
-
-        for (n, v) in self.arg_name_list.iter().zip(args) {
-            child.insert(n.to_string(), v.clone());
-        }
 
         self.body.eval(&mut child)
     }
@@ -150,8 +155,9 @@ impl Function {
 
 impl Value {
     pub fn get_prop(&mut self, name: &str) -> Result<Value, failure::Error> {
-        let env: Env = Default::default();
-        env.insert("_".to_string(), self.clone());
+        let mut evaluated_map = HashMap::new();
+        evaluated_map.insert("_".to_string(), self.clone());
+        let env = Env::new(Default::default(), evaluated_map);
         match self {
             Value::Map(env) => env.get_value(name),
             Value::String(_s) => match name {
@@ -170,19 +176,28 @@ impl Value {
                         let list: Vec<Value> = env.get_value("list")?.try_into()?;
 
                         Ok(list.get(i as usize).map_or(Value::Null, |v| {
-                            let mut new_env = Env::default();
+                            let mut bind_map = HashMap::new();
+                            bind_map.insert("next".to_string(), Unevaluated::Native(next));
+
+                            let mut evaluated_map = HashMap::new();
+                            evaluated_map.insert("i".to_string(), Value::Number(i + 1.0));
+
+                            let mut new_env = Env::new(bind_map, evaluated_map);
                             new_env.parent = Some(Box::new(env.clone()));
-                            new_env.insert("i".to_string(), Value::Number(i + 1.0));
-                            new_env.bind("next".to_string(), Unevaluated::Native(next));
 
                             Value::List(vec![Value::Map(new_env), v.clone()])
                         }))
                     }
 
-                    let mut new_env: Env = Env::root();
-                    new_env.insert("list".to_string(), self.clone());
-                    new_env.insert("i".to_string(), Value::Number(0.0));
-                    new_env.bind("next".to_string(), Unevaluated::Native(next));
+                    let mut bind_map = HashMap::new();
+                    bind_map.insert("next".to_string(), Unevaluated::Native(next));
+
+                    let mut evaluated_map = HashMap::new();
+                    evaluated_map.insert("i".to_string(), Value::Number(0.0));
+                    evaluated_map.insert("list".to_string(), self.clone());
+
+                    let mut new_env = Env::new(bind_map, evaluated_map);
+                    new_env.parent = Some(Box::new(Env::root()));
 
                     let iterator_fn: Function = new_env.get_value("Iterator")?.try_into()?;
                     Ok(iterator_fn.call(&[Value::Map(new_env)])?)
@@ -537,11 +552,12 @@ pub fn eval(cmd: &Cmd, env: &mut Env) -> Result<Vec<Value>, failure::Error> {
 
                 if cmd.0.len() == i + 1 && env.is_recursive_fn(&f) {
                     i = 0;
-                    *env = Env::default();
-                    env.parent = Some(f.inner);
+                    let mut evaluated_map = HashMap::new();
                     for (n, v) in f.arg_name_list.iter().zip(args) {
-                        env.insert(n.to_string(), v.clone());
+                        evaluated_map.insert(n.to_string(), v.clone());
                     }
+                    *env = Env::new(Default::default(), evaluated_map);
+                    env.parent = Some(f.inner);
 
                     continue;
                 }

@@ -1,20 +1,23 @@
 use crate::stack::{Env, Function, Unevaluated, Value};
 use std::convert::TryInto;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapModule;
 
 impl MapModule {
     pub fn get_value() -> Value {
-        let env = Env::default();
-        env.insert(
+        let mut evaluated_map = HashMap::new();
+        evaluated_map.insert(
             "keys".to_string(),
-            Function::new(env.clone(), vec!["map".to_string()], KEYS).into(),
+            Function::new(Default::default(), vec!["map".to_string()], KEYS).into(),
         );
-        env.insert(
+        evaluated_map.insert(
             "values".to_string(),
-            Function::new(env.clone(), vec!["map".to_string()], VALUES).into(),
+            Function::new(Default::default(), vec!["map".to_string()], VALUES).into(),
         );
+        let env = Env::new(Default::default(), evaluated_map);
+
         Value::Map(env)
     }
 }

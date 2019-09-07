@@ -1,17 +1,19 @@
 use crate::stack;
 use crate::stack::{Env, Function, Unevaluated, Value};
 use std::convert::TryInto;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JsonModule;
 
 impl JsonModule {
     pub fn get_value() -> Value {
-        let env = Env::default();
-        env.insert(
+        let mut evaluated_map = HashMap::new();
+        evaluated_map.insert(
             "parse".to_string(),
-            Function::new(env.clone(), vec!["s".to_string()], PARSE).into(),
+            Function::new(Default::default(), vec!["s".to_string()], PARSE).into(),
         );
+        let env = Env::new(Default::default(), evaluated_map);
 
         Value::Map(env)
     }

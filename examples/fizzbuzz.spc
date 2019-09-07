@@ -1,4 +1,4 @@
-l: List.range(0, 2000),
+l: List.range(0, 1000),
 
 fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
