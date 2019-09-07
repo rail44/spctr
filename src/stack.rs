@@ -39,10 +39,6 @@ impl Env {
         }
     }
 
-    pub fn bind(&self, name: String, b: Unevaluated) {
-        self.bind_map.borrow_mut().insert(name, b);
-    }
-
     pub fn root() -> Self {
         let mut bind_map = HashMap::new();
         bind_map.insert(
@@ -56,6 +52,18 @@ impl Env {
         evaluated_map.insert("Json".to_string(), json::JsonModule::get_value());
 
         Self::new(bind_map, evaluated_map)
+    }
+
+    pub fn bind(&self, k: String, u: Unevaluated) {
+        self.bind_map.borrow_mut().insert(k, u);
+    }
+
+    pub fn into_first_binding(self) -> Env {
+        if self.bind_map.borrow().is_empty() && self.evaluated_map.borrow().is_empty() {
+            return self.parent.unwrap().into_first_binding();
+        }
+
+        self
     }
 
     pub fn is_recursive_fn(&self, f: &Function) -> bool {
@@ -327,6 +335,7 @@ pub enum Op {
     Call(usize),
     BuildFunction(Vec<String>, Cmd),
     BuildList(usize),
+    BuildMap,
     Fork,
     Exit,
     JumpUnless(usize),
@@ -431,6 +440,9 @@ fn build_cmd(v: &mut Vec<Op>, pair: Pair<'_, Rule>) -> Result<(), failure::Error
         Rule::block => {
             v.push(Op::Fork);
             build_cmd_from_iter(v, pair.into_inner())?;
+            if let Op::SetBind(_, _) = v.last().unwrap() {
+                v.push(Op::BuildMap);
+            }
             v.push(Op::Exit);
         }
         Rule::spread => {
@@ -539,9 +551,8 @@ pub fn eval(cmd: &Cmd, env: &mut Env) -> Result<Vec<Value>, failure::Error> {
             }
             Op::Fork => {
                 let mut child = Env::default();
-                child.parent = Some(Box::new(env.clone()));
+                child.parent = Some(Box::new(env.clone().into_first_binding()));
                 *env = child.clone();
-                stack.push(Value::Map(child));
             }
             Op::Exit => {
                 *env = *env.parent.as_ref().unwrap().clone();
@@ -566,6 +577,9 @@ pub fn eval(cmd: &Cmd, env: &mut Env) -> Result<Vec<Value>, failure::Error> {
             }
             Op::SetBind(name, bind) => {
                 env.bind(name.to_string(), Unevaluated::Cmd(bind.clone()));
+            }
+            Op::BuildMap => {
+                stack.push(Value::Map(env.clone()));
             }
             Op::Access(name) => {
                 let mut v = stack.pop().unwrap();

@@ -35,7 +35,6 @@ fn main() -> Result<(), failure::Error> {
         // );
         return Ok(());
     }
-
     println!(
         "{}",
         stack::eval(&stack, &mut stack::Env::root())?.pop().unwrap()

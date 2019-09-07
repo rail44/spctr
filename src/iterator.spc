@@ -44,18 +44,17 @@
 
   filter: (fn) => {
     inner: (target) => {
-      next_iter: inner(target.next[0]),
       next: {
         if target.next = null
           null
 
         if fn(target.next[1])
-          next_iter.next
+          [
+            inner(target.next[0]),
+            target.next[1]
+          ]
 
-        [
-          next_iter,
-          target.next[1]
-        ]
+        inner(target.next[0]).next
       }
     },
 
