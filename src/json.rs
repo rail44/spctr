@@ -28,7 +28,7 @@ impl std::fmt::Display for JsonModule {
 pub const PARSE: Unevaluated =
     Unevaluated::Native(|mut env: Env| -> Result<Value, failure::Error> {
         let s: String = env.get_value("s")?.try_into()?;
-        Ok(stack::eval(&stack::get_stack(&s)?, &mut Env::default())?
+        Ok(stack::eval(&stack::get_stack(&s)?, Env::default())?
             .pop()
             .unwrap())
     });

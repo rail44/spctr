@@ -39,7 +39,7 @@ const VALUES: Unevaluated = Unevaluated::Native(|mut env: Env| -> Result<Value, 
 
     let mut values = vec![];
     for (_, v) in binds.iter() {
-        values.push(v.eval(&mut env)?);
+        values.push(v.eval(env.clone())?);
     }
     Ok(Value::List(values))
 });
