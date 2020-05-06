@@ -33,7 +33,13 @@ fn main() -> Result<(), failure::Error> {
         // );
         return Ok(());
     }
-    let ptr = jit::translate(&token);
+
+    println!(
+        "{:?}",
+        token
+    );
+
+    let ptr = jit::compile(&token);
     let compiled = unsafe { mem::transmute::<_, fn() -> f64>(ptr) };
     println!(
         "{:?}",
