@@ -19,7 +19,7 @@ fn main() -> Result<(), failure::Error> {
         Some(v) => parser::parse(v).map_err(|s| failure::format_err!("Parsing failed!, {}", s))?.1,
         None => {
             let path = matches.value_of("FILE").unwrap();
-            let input = fs::read_to_string(path)?.clone();
+            let input = fs::read_to_string(path)?;
             parser::parse(&input).map_err(|s| failure::format_err!("Parsing failed!, {}", s))?.1
         }
     };

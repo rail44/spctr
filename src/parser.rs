@@ -1,10 +1,10 @@
 use nom::{
   IResult,
   branch::alt,
-  combinator::{map, map_res, iterator},
+  combinator::{map, map_res},
   character::complete::{char, space0, digit1, alpha1},
-  sequence::{pair, delimited, separated_pair, preceded},
-  multi::separated_list
+  sequence::{pair, delimited, separated_pair},
+  multi::{fold_many0, separated_list}
 };
 use crate::token::*;
 use std::str::FromStr;
@@ -30,31 +30,35 @@ fn primary(input: &str) -> IResult<&str, Primary> {
 
 fn multitive(input: &str) -> IResult<&str, Multitive> {
     let (input, left) = primary(input)?;
-    let mut iter = iterator(
-        input,
-        pair(alt((char('*'), char('/'))), primary)
-    );
-    let rights = iter.map(|(op, val)| match op {
-            '*' => MultitiveRight::Mul(val),
-            '/' => MultitiveRight::Div(val),
-            _ => unreachable!()
-        }).collect();
-    iter.finish()?;
+    let (input, rights) = fold_many0(
+        pair(alt((char('*'), char('/'))), primary),
+        Vec::new(),
+        |mut vec, (op, val)| {
+            match op {
+                '*' => vec.push(MultitiveRight::Mul(val)),
+                '/' => vec.push(MultitiveRight::Div(val)),
+                _ => unreachable!()
+            };
+            vec
+        }
+    )(input)?;
     Ok((input, Multitive { left, rights }))
 }
 
 fn additive(input: &str) -> IResult<&str, Additive> {
     let (input, left) = multitive(input)?;
-    let mut iter = iterator(
-        input,
-        pair(alt((char('+'), char('-'))), multitive)
-    );
-    let rights = iter.map(|(op, val)| match op {
-            '+' => AdditiveRight::Add(val),
-            '-' => AdditiveRight::Sub(val),
-            _ => unreachable!()
-        }).collect();
-    iter.finish()?;
+    let (input, rights) = fold_many0(
+        pair(alt((char('+'), char('-'))), multitive),
+        Vec::new(),
+        |mut vec, (op, val)| {
+            match op {
+                '+' => vec.push(AdditiveRight::Add(val)),
+                '-' => vec.push(AdditiveRight::Sub(val)),
+                _ => unreachable!()
+            };
+            vec
+        }
+    )(input)?;
     Ok((input, Additive { left, rights }))
 }
 
@@ -64,22 +68,25 @@ fn bind(input: &str) -> IResult<&str, (String, Additive)> {
 }
 
 fn definitions(input: &str) -> IResult<&str, Vec<(String, Additive)>> {
-    separated_list(char(','), bind)(input)
+    separated_list(char(','), delimited(space0, bind, space0))(input)
 }
 
 fn statement(input: &str) -> IResult<&str, Statement> {
-    alt((
-        map(
-            pair(
-                definitions,
-                preceded(char(','), additive)
-            ),
-            |(definitions, body)| Statement { definitions, body }
+    map(
+        separated_pair(
+            definitions,
+            char(','),
+            additive
         ),
-        map(additive, |body| Statement { definitions: Vec::new(), body })
-    ))(input)
+        |(definitions, body)| Statement { definitions, body }
+   )(input)
 }
 
 pub fn parse(input: &str) -> IResult<&str, AST> {
     statement(input)
+}
+
+#[test]
+fn test_definitions() {
+    dbg!(definitions("hoge: 1, fuga:2").unwrap());
 }

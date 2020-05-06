@@ -1,12 +1,4 @@
-use crate::parser::{
-    AST,
-    Additive,
-    AdditiveRight,
-    Multitive,
-    MultitiveRight,
-    Primary,
-    Statement
-};
+use crate::token::*;
 use cranelift::prelude::*;
 use cranelift_module::{DataContext, Linkage, Module};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
@@ -112,6 +104,7 @@ impl<'a> Translator<'a> {
             Primary::Identifier(name) => {
                 self.builder.use_var(self.binds.get(name).unwrap().clone())
             }
+            _ => unimplemented!(),
         }
     }
 }
