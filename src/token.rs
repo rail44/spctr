@@ -1,0 +1,46 @@
+pub type AST = Statement;
+
+pub type Bind = (String, Additive);
+
+#[derive(Clone, Debug)]
+pub struct Statement {
+    pub definitions: Vec<Bind>,
+    pub body: Additive
+}
+
+#[derive(Clone, Debug)]
+pub struct Struct {
+    pub definitions: Vec<Bind>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Additive {
+    pub left: Multitive,
+    pub rights: Vec<AdditiveRight>
+}
+
+#[derive(Clone, Debug)]
+pub enum AdditiveRight {
+    Add(Multitive),
+    Sub(Multitive)
+}
+
+#[derive(Clone, Debug)]
+pub struct Multitive {
+    pub left: Primary,
+    pub rights: Vec<MultitiveRight>
+}
+
+#[derive(Clone, Debug)]
+pub enum MultitiveRight {
+    Mul(Primary),
+    Div(Primary),
+}
+
+#[derive(Clone, Debug)]
+pub enum Primary {
+    Number(f64),
+    Identifier(String),
+    Block(Box<Statement>),
+    Struct(Struct),
+}

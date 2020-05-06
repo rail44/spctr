@@ -1,5 +1,6 @@
 mod parser;
 mod jit;
+mod token;
 
 use clap::{App, Arg};
 
