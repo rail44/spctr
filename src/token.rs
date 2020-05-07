@@ -5,7 +5,7 @@ pub type Bind = (String, Additive);
 #[derive(Clone, Debug)]
 pub struct Statement {
     pub definitions: Vec<Bind>,
-    pub body: Additive
+    pub body: Additive,
 }
 
 #[derive(Clone, Debug)]
@@ -16,19 +16,19 @@ pub struct Struct {
 #[derive(Clone, Debug)]
 pub struct Additive {
     pub left: Multitive,
-    pub rights: Vec<AdditiveRight>
+    pub rights: Vec<AdditiveRight>,
 }
 
 #[derive(Clone, Debug)]
 pub enum AdditiveRight {
     Add(Multitive),
-    Sub(Multitive)
+    Sub(Multitive),
 }
 
 #[derive(Clone, Debug)]
 pub struct Multitive {
     pub left: Primary,
-    pub rights: Vec<MultitiveRight>
+    pub rights: Vec<MultitiveRight>,
 }
 
 #[derive(Clone, Debug)]

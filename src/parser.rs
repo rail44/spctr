@@ -1,12 +1,12 @@
-use nom::{
-  IResult,
-  branch::alt,
-  combinator::{map, map_res},
-  character::complete::{char, space0, digit1, alpha1},
-  sequence::{pair, delimited, separated_pair},
-  multi::{fold_many0, separated_list}
-};
 use crate::token::*;
+use nom::{
+    branch::alt,
+    character::complete::{alpha1, char, digit1, space0},
+    combinator::{map, map_res},
+    multi::{fold_many0, separated_list},
+    sequence::{delimited, pair, separated_pair},
+    IResult,
+};
 use std::str::FromStr;
 
 fn number(input: &str) -> IResult<&str, Primary> {
@@ -37,10 +37,10 @@ fn multitive(input: &str) -> IResult<&str, Multitive> {
             match op {
                 '*' => vec.push(MultitiveRight::Mul(val)),
                 '/' => vec.push(MultitiveRight::Div(val)),
-                _ => unreachable!()
+                _ => unreachable!(),
             };
             vec
-        }
+        },
     )(input)?;
     Ok((input, Multitive { left, rights }))
 }
@@ -54,10 +54,10 @@ fn additive(input: &str) -> IResult<&str, Additive> {
             match op {
                 '+' => vec.push(AdditiveRight::Add(val)),
                 '-' => vec.push(AdditiveRight::Sub(val)),
-                _ => unreachable!()
+                _ => unreachable!(),
             };
             vec
-        }
+        },
     )(input)?;
     Ok((input, Additive { left, rights }))
 }
@@ -74,15 +74,14 @@ fn definitions(input: &str) -> IResult<&str, Vec<(String, Additive)>> {
 fn statement(input: &str) -> IResult<&str, Statement> {
     alt((
         map(
-            separated_pair(
-                definitions,
-                char(','),
-                additive
-            ),
-            |(definitions, body)| Statement { definitions, body }
+            separated_pair(definitions, char(','), additive),
+            |(definitions, body)| Statement { definitions, body },
         ),
-        map(additive, |body| Statement { definitions: Vec::new(), body })
-   ))(input)
+        map(additive, |body| Statement {
+            definitions: Vec::new(),
+            body,
+        }),
+    ))(input)
 }
 
 pub fn parse(input: &str) -> IResult<&str, AST> {

@@ -1,5 +1,5 @@
-mod parser;
 mod jit;
+mod parser;
 mod token;
 
 use clap::{App, Arg};
@@ -16,11 +16,17 @@ fn main() -> Result<(), failure::Error> {
         .get_matches();
 
     let token = match matches.value_of("input") {
-        Some(v) => parser::parse(v).map_err(|s| failure::format_err!("Parsing failed!, {}", s))?.1,
+        Some(v) => {
+            parser::parse(v)
+                .map_err(|s| failure::format_err!("Parsing failed!, {}", s))?
+                .1
+        }
         None => {
             let path = matches.value_of("FILE").unwrap();
             let input = fs::read_to_string(path)?;
-            parser::parse(&input).map_err(|s| failure::format_err!("Parsing failed!, {}", s))?.1
+            parser::parse(&input)
+                .map_err(|s| failure::format_err!("Parsing failed!, {}", s))?
+                .1
         }
     };
 
@@ -35,16 +41,10 @@ fn main() -> Result<(), failure::Error> {
         return Ok(());
     }
 
-    println!(
-        "{:?}",
-        token
-    );
+    println!("{:?}", token);
 
     let ptr = jit::compile(&token);
     let compiled = unsafe { mem::transmute::<_, fn() -> f64>(ptr) };
-    println!(
-        "{:?}",
-        compiled()
-    );
+    println!("{:?}", compiled());
     Ok(())
 }
