@@ -12,33 +12,6 @@ pub fn compile(ast: &AST) -> *const u8 {
     let mut ctx = module.make_context();
     ctx.func.signature.returns.push(AbiParam::new(F64));
     let mut builder_context = FunctionBuilderContext::new();
-    let mut binds = HashMap::new();
-
-    let mut b = Vec::new();
-    for bind in ast.definitions.iter() {
-        let mut child_ctx = module.make_context();
-        child_ctx.func.signature.returns.push(AbiParam::new(F64));
-        let id = module
-            .declare_function(&format!("{}", bind.0), Linkage::Local, &child_ctx.func.signature)
-            .map_err(|e| e.to_string()).unwrap();
-        binds.insert(bind.0.clone(), id);
-        b.push((child_ctx, &bind.1, id));
-    }
-
-    for (mut child_ctx, body, id) in b {
-        let mut builder_context = FunctionBuilderContext::new();
-        let mut child_builder = FunctionBuilder::new(&mut child_ctx.func, &mut builder_context);
-        let block = child_builder.create_block();
-        child_builder.append_block_params_for_function_params(block);
-        child_builder.switch_to_block(block);
-        child_builder.seal_block(block);
-
-        let mut translator = Translator::new(&mut child_builder, &binds, &mut module);
-        let ret = translator.translate(&body);
-        translator.builder.ins().return_(&[ret]);
-        translator.builder.finalize();
-        module.define_function(id, &mut child_ctx, &mut NullTrapSink {}).unwrap();
-    }
 
     let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
     let block = builder.create_block();
@@ -47,8 +20,9 @@ pub fn compile(ast: &AST) -> *const u8 {
     builder.seal_block(block);
 
 
-    let mut translator = Translator::new(&mut builder, &binds, &mut module);
-    let ret = translator.translate(&ast.body);
+    let mut binds = HashMap::new();
+    let mut translator = Translator::new(&mut builder, &mut binds, &mut module);
+    let ret = translator.translate(&ast);
 
     translator.builder.ins().return_(&[ret]);
     translator.builder.finalize();
@@ -63,13 +37,13 @@ pub fn compile(ast: &AST) -> *const u8 {
 }
 
 struct Translator<'a> {
-    binds: &'a HashMap<String, FuncId>,
+    binds: &'a mut HashMap<String, FuncId>,
     builder: &'a mut FunctionBuilder<'a>,
     module: &'a mut Module<SimpleJITBackend>
 }
 
 impl<'a> Translator<'a> {
-    fn new(builder: &'a mut FunctionBuilder<'a>, binds: &'a HashMap<String, FuncId>, module: &'a mut Module<SimpleJITBackend>) -> Translator<'a> {
+    fn new(builder: &'a mut FunctionBuilder<'a>, binds: &'a mut HashMap<String, FuncId>, module: &'a mut Module<SimpleJITBackend>) -> Translator<'a> {
         Translator {
             binds,
             builder,
@@ -77,7 +51,38 @@ impl<'a> Translator<'a> {
         }
     }
 
-    fn translate(&mut self, v: &Additive) -> Value {
+    fn translate(&mut self, v: &Statement) -> Value{
+        let mut b = Vec::new();
+
+        for bind in v.definitions.iter() {
+            let mut child_ctx = self.module.make_context();
+            child_ctx.func.signature.returns.push(AbiParam::new(F64));
+            let id = self.module
+                .declare_function(&format!("{}", bind.0), Linkage::Local, &child_ctx.func.signature)
+                .map_err(|e| e.to_string()).unwrap();
+            self.binds.insert(bind.0.clone(), id);
+            b.push((child_ctx, &bind.1, id));
+        }
+
+        for (mut child_ctx, body, id) in b {
+            let mut builder_context = FunctionBuilderContext::new();
+            let mut child_builder = FunctionBuilder::new(&mut child_ctx.func, &mut builder_context);
+            let block = child_builder.create_block();
+            child_builder.append_block_params_for_function_params(block);
+            child_builder.switch_to_block(block);
+            child_builder.seal_block(block);
+
+            let mut translator = Translator::new(&mut child_builder, &mut self.binds, &mut self.module);
+            let ret = translator.translate_additive(&body);
+            translator.builder.ins().return_(&[ret]);
+            translator.builder.finalize();
+            self.module.define_function(id, &mut child_ctx, &mut NullTrapSink {}).unwrap();
+        }
+
+        self.translate_additive(&v.body)
+    }
+
+    fn translate_additive(&mut self, v: &Additive) -> Value {
         let mut lhs = self.translate_multitive(&v.left);
         for right in &v.rights {
             match right {
