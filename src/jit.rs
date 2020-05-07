@@ -1,6 +1,6 @@
 use crate::token::*;
 use cranelift::prelude::*;
-use cranelift_module::{DataContext, Linkage, Module};
+use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use cranelift_codegen::ir::types::*;
 use cranelift_codegen::binemit::NullTrapSink;
@@ -11,16 +11,47 @@ pub fn compile(ast: &AST) -> *const u8 {
     let mut module: Module<SimpleJITBackend> = Module::new(jit_builder);
     let mut ctx = module.make_context();
     ctx.func.signature.returns.push(AbiParam::new(F64));
-    let data_ctx = DataContext::new();
     let mut builder_context = FunctionBuilderContext::new();
+    let mut binds = HashMap::new();
+
+    let mut b = Vec::new();
+    for bind in ast.definitions.iter() {
+        let mut child_ctx = module.make_context();
+        child_ctx.func.signature.returns.push(AbiParam::new(F64));
+        let id = module
+            .declare_function(&format!("{}", bind.0), Linkage::Local, &child_ctx.func.signature)
+            .map_err(|e| e.to_string()).unwrap();
+        binds.insert(bind.0.clone(), id);
+        b.push((child_ctx, &bind.1, id));
+    }
+
+    for (mut child_ctx, body, id) in b {
+        let mut builder_context = FunctionBuilderContext::new();
+        let mut child_builder = FunctionBuilder::new(&mut child_ctx.func, &mut builder_context);
+        let block = child_builder.create_block();
+        child_builder.append_block_params_for_function_params(block);
+        child_builder.switch_to_block(block);
+        child_builder.seal_block(block);
+
+        let mut translator = Translator::new(&mut child_builder, &binds, &mut module);
+        let ret = translator.translate(&body);
+        translator.builder.ins().return_(&[ret]);
+        translator.builder.finalize();
+        module.define_function(id, &mut child_ctx, &mut NullTrapSink {}).unwrap();
+    }
+
     let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
     let block = builder.create_block();
     builder.append_block_params_for_function_params(block);
     builder.switch_to_block(block);
     builder.seal_block(block);
 
-    let mut translator = Translator::new(&mut builder);
-    translator.translate(&ast);
+
+    let mut translator = Translator::new(&mut builder, &binds, &mut module);
+    let ret = translator.translate(&ast.body);
+
+    translator.builder.ins().return_(&[ret]);
+    translator.builder.finalize();
 
     let id = module
         .declare_function("top", Linkage::Export, &ctx.func.signature)
@@ -32,37 +63,21 @@ pub fn compile(ast: &AST) -> *const u8 {
 }
 
 struct Translator<'a> {
-    binds: HashMap<String, Variable>,
-    builder: &'a mut FunctionBuilder<'a>
+    binds: &'a HashMap<String, FuncId>,
+    builder: &'a mut FunctionBuilder<'a>,
+    module: &'a mut Module<SimpleJITBackend>
 }
 
 impl<'a> Translator<'a> {
-    fn new(builder: &'a mut FunctionBuilder<'a>) -> Translator<'a> {
+    fn new(builder: &'a mut FunctionBuilder<'a>, binds: &'a HashMap<String, FuncId>, module: &'a mut Module<SimpleJITBackend>) -> Translator<'a> {
         Translator {
-            binds: HashMap::new(),
+            binds,
             builder,
+            module
         }
     }
 
-    fn translate(&mut self, v: &AST) {
-        let v = self.translate_statement(v);
-
-        self.builder.ins().return_(&[v]);
-        self.builder.finalize();
-    }
-
-    fn translate_statement(&mut self, v: &Statement) -> Value {
-        for (i, bind) in v.definitions.iter().enumerate() {
-            let variable = Variable::new(i);
-            let value = self.translate_additive(&bind.1);
-            self.builder.declare_var(variable, F64);
-            self.builder.def_var(variable, value);
-            self.binds.insert(bind.0.clone(), variable);
-        }
-        self.translate_additive(&v.body)
-    }
-
-    fn translate_additive(&mut self, v: &Additive) -> Value {
+    fn translate(&mut self, v: &Additive) -> Value {
         let mut lhs = self.translate_multitive(&v.left);
         for right in &v.rights {
             match right {
@@ -102,7 +117,10 @@ impl<'a> Translator<'a> {
                 self.builder.ins().f64const(v.clone())
             }
             Primary::Identifier(name) => {
-                self.builder.use_var(self.binds.get(name).unwrap().clone())
+                let id = self.binds.get(name).unwrap().clone();
+                let func = self.module.declare_func_in_func(id, &mut self.builder.func);
+                let call = self.builder.ins().call(func, &[]);
+                self.builder.inst_results(call)[0]
             }
             _ => unimplemented!(),
         }

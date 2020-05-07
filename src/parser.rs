@@ -72,14 +72,17 @@ fn definitions(input: &str) -> IResult<&str, Vec<(String, Additive)>> {
 }
 
 fn statement(input: &str) -> IResult<&str, Statement> {
-    map(
-        separated_pair(
-            definitions,
-            char(','),
-            additive
+    alt((
+        map(
+            separated_pair(
+                definitions,
+                char(','),
+                additive
+            ),
+            |(definitions, body)| Statement { definitions, body }
         ),
-        |(definitions, body)| Statement { definitions, body }
-   )(input)
+        map(additive, |body| Statement { definitions: Vec::new(), body })
+   ))(input)
 }
 
 pub fn parse(input: &str) -> IResult<&str, AST> {
