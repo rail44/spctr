@@ -1,8 +1,8 @@
 use crate::token::*;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
-use cranelift_codegen::Context;
 use cranelift_codegen::ir::types::*;
+use cranelift_codegen::Context;
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use std::collections::HashMap;
@@ -44,7 +44,7 @@ impl ScopeContext {
 
         ScopeContext {
             ctx,
-            builder_context
+            builder_context,
         }
     }
 
@@ -97,9 +97,8 @@ impl<'a> Translator<'a> {
 
         for (mut scope_ctx, body, id) in b {
             let builder = scope_ctx.get_builder();
-            let mut translator =
-                Translator::new(builder, self.binds, &mut self.module);
-            let ret = translator.translate_additive(&body);
+            let mut translator = Translator::new(builder, self.binds, &mut self.module);
+            let ret = translator.translate_expression(&body);
             translator.builder.ins().return_(&[ret]);
             translator.builder.finalize();
             self.module
@@ -108,7 +107,14 @@ impl<'a> Translator<'a> {
             self.module.clear_context(&mut scope_ctx.ctx);
         }
 
-        self.translate_additive(&v.body)
+        self.translate_expression(&v.body)
+    }
+
+    fn translate_expression(&mut self, v: &Expression) -> Value {
+        match v {
+            Expression::Additive(a) => self.translate_additive(a),
+            _ => unimplemented!(),
+        }
     }
 
     fn translate_additive(&mut self, v: &Additive) -> Value {
@@ -150,22 +156,30 @@ impl<'a> Translator<'a> {
             Primary::Number(v) => self.builder.ins().f64const(v.clone()),
             Primary::Identifier(name) => {
                 let id = self.binds.get(name).unwrap();
-                let func = self.module.declare_func_in_func(*id, &mut self.builder.func);
+                let func = self
+                    .module
+                    .declare_func_in_func(*id, &mut self.builder.func);
                 let call = self.builder.ins().call(func, &[]);
                 self.builder.inst_results(call)[0]
-            },
+            }
             Primary::Block(s) => {
                 let mut scope_ctx = ScopeContext::new(self.module.make_context());
 
                 let mut binds = self.binds.clone();
-                let mut translator = Translator::new(scope_ctx.get_builder(), &mut binds, &mut self.module);
+                let mut translator =
+                    Translator::new(scope_ctx.get_builder(), &mut binds, &mut self.module);
                 let ret = translator.translate(&s);
 
                 translator.builder.ins().return_(&[ret]);
                 translator.builder.finalize();
 
-                let id = self.module
-                    .declare_function(&self.get_identifier("block"), Linkage::Local, &scope_ctx.ctx.func.signature)
+                let id = self
+                    .module
+                    .declare_function(
+                        &self.get_identifier("block"),
+                        Linkage::Local,
+                        &scope_ctx.ctx.func.signature,
+                    )
                     .map_err(|e| e.to_string())
                     .unwrap();
                 self.module

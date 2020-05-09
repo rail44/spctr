@@ -1,11 +1,17 @@
 pub type AST = Statement;
 
-pub type Bind = (String, Additive);
+pub type Bind = (String, Expression);
 
 #[derive(Clone, Debug)]
 pub struct Statement {
     pub definitions: Vec<Bind>,
-    pub body: Additive,
+    pub body: Expression,
+}
+
+#[derive(Clone, Debug)]
+pub enum Expression {
+    Additive(Additive),
+    If(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
 #[derive(Clone, Debug)]

@@ -1,10 +1,11 @@
 use crate::token::*;
 use nom::{
     branch::alt,
+    bytes::complete::tag,
     character::complete::{alpha1, char, digit1, space0},
     combinator::{all_consuming, map, map_res},
     multi::{fold_many0, separated_list},
-    sequence::{delimited, pair, separated_pair},
+    sequence::{delimited, pair, preceded, separated_pair, tuple},
     IResult,
 };
 use std::str::FromStr;
@@ -45,7 +46,7 @@ fn multitive(input: &str) -> IResult<&str, Multitive> {
     Ok((input, Multitive { left, rights }))
 }
 
-fn additive(input: &str) -> IResult<&str, Additive> {
+fn additive(input: &str) -> IResult<&str, Expression> {
     let (input, left) = multitive(input)?;
     let (input, rights) = fold_many0(
         pair(alt((char('+'), char('-'))), multitive),
@@ -59,29 +60,42 @@ fn additive(input: &str) -> IResult<&str, Additive> {
             vec
         },
     )(input)?;
-    Ok((input, Additive { left, rights }))
+    Ok((input, Expression::Additive(Additive { left, rights })))
 }
 
-fn bind(input: &str) -> IResult<&str, (String, Additive)> {
-    let (input, (label, v)) = separated_pair(alpha1, char(':'), additive)(input)?;
+fn bind(input: &str) -> IResult<&str, (String, Expression)> {
+    let (input, (label, v)) = separated_pair(alpha1, char(':'), expression)(input)?;
     Ok((input, (label.to_string(), v)))
 }
 
-fn definitions(input: &str) -> IResult<&str, Vec<(String, Additive)>> {
+fn definitions(input: &str) -> IResult<&str, Vec<(String, Expression)>> {
     separated_list(char(','), delimited(space0, bind, space0))(input)
 }
 
 fn statement(input: &str) -> IResult<&str, Statement> {
     alt((
         map(
-            separated_pair(definitions, char(','), additive),
+            separated_pair(definitions, char(','), expression),
             |(definitions, body)| Statement { definitions, body },
         ),
-        map(additive, |body| Statement {
+        map(expression, |body| Statement {
             definitions: Vec::new(),
             body,
         }),
     ))(input)
+}
+
+fn if_(input: &str) -> IResult<&str, Expression> {
+    let (input, (cond, t, f)) =
+        preceded(tag("if"), tuple((expression, expression, expression)))(input)?;
+    Ok((
+        input,
+        Expression::If(Box::new(cond), Box::new(t), Box::new(f)),
+    ))
+}
+
+fn expression(input: &str) -> IResult<&str, Expression> {
+    alt((if_, additive))(input)
 }
 
 pub fn parse(input: &str) -> IResult<&str, AST> {
