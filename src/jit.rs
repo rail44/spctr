@@ -13,8 +13,8 @@ pub fn compile(ast: &AST) -> *const u8 {
 
     let mut scope_ctx = ScopeContext::new(module.make_context());
 
-    let binds = HashMap::new();
-    let mut translator = Translator::new(scope_ctx.get_builder(), binds, &mut module);
+    let mut binds = HashMap::new();
+    let mut translator = Translator::new(scope_ctx.get_builder(), &mut binds, &mut module);
     let ret = translator.translate(&ast);
 
     translator.builder.ins().return_(&[ret]);
@@ -38,8 +38,10 @@ struct ScopeContext {
 }
 
 impl ScopeContext {
-    fn new(ctx: Context) -> ScopeContext {
+    fn new(mut ctx: Context) -> ScopeContext {
         let builder_context = FunctionBuilderContext::new();
+        ctx.func.signature.returns.push(AbiParam::new(F64));
+
         ScopeContext {
             ctx,
             builder_context
@@ -47,8 +49,6 @@ impl ScopeContext {
     }
 
     fn get_builder<'a>(&'a mut self) -> FunctionBuilder<'a> {
-        self.ctx.func.signature.returns.push(AbiParam::new(F64));
-
         let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_context);
         let block = builder.create_block();
         builder.append_block_params_for_function_params(block);
@@ -59,7 +59,7 @@ impl ScopeContext {
 }
 
 struct Translator<'a> {
-    binds: HashMap<String, FuncId>,
+    binds: &'a mut HashMap<String, FuncId>,
     builder: FunctionBuilder<'a>,
     module: &'a mut Module<SimpleJITBackend>,
 }
@@ -67,7 +67,7 @@ struct Translator<'a> {
 impl<'a> Translator<'a> {
     fn new(
         builder: FunctionBuilder<'a>,
-        binds: HashMap<String, FuncId>,
+        binds: &'a mut HashMap<String, FuncId>,
         module: &'a mut Module<SimpleJITBackend>,
     ) -> Translator<'a> {
         Translator {
@@ -77,44 +77,33 @@ impl<'a> Translator<'a> {
         }
     }
 
-    fn fork(&mut self, ctx: &'a mut ScopeContext) -> Translator {
-        Translator::new(ctx.get_builder(), self.binds.clone(), self.module)
-    }
-
     fn translate(&mut self, v: &Statement) -> Value {
         let mut b = Vec::new();
 
         for bind in v.definitions.iter() {
-            let mut child_ctx = self.module.make_context();
-            child_ctx.func.signature.returns.push(AbiParam::new(F64));
+            let scope_ctx = ScopeContext::new(self.module.make_context());
             let id = self
                 .module
                 .declare_function(
                     &format!("{}", bind.0),
                     Linkage::Local,
-                    &child_ctx.func.signature,
+                    &scope_ctx.ctx.func.signature,
                 )
                 .map_err(|e| e.to_string())
                 .unwrap();
             self.binds.insert(bind.0.clone(), id);
-            b.push((child_ctx, &bind.1, id));
+            b.push((scope_ctx, &bind.1, id));
         }
 
-        for (mut child_ctx, body, id) in b {
-            let mut builder_context = FunctionBuilderContext::new();
-            let mut child_builder = FunctionBuilder::new(&mut child_ctx.func, &mut builder_context);
-            let block = child_builder.create_block();
-            child_builder.append_block_params_for_function_params(block);
-            child_builder.switch_to_block(block);
-            child_builder.seal_block(block);
-
+        for (mut scope_ctx, body, id) in b {
+            let builder = scope_ctx.get_builder();
             let mut translator =
-                Translator::new(child_builder, self.binds.clone(), &mut self.module);
+                Translator::new(builder, self.binds, &mut self.module);
             let ret = translator.translate_additive(&body);
             translator.builder.ins().return_(&[ret]);
             translator.builder.finalize();
             self.module
-                .define_function(id, &mut child_ctx, &mut NullTrapSink {})
+                .define_function(id, &mut scope_ctx.ctx, &mut NullTrapSink {})
                 .unwrap();
         }
 
