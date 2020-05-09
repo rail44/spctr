@@ -85,7 +85,7 @@ impl<'a> Translator<'a> {
             let id = self
                 .module
                 .declare_function(
-                    &format!("{}", bind.0),
+                    &self.get_identifier(&bind.0),
                     Linkage::Local,
                     &scope_ctx.ctx.func.signature,
                 )
@@ -105,6 +105,7 @@ impl<'a> Translator<'a> {
             self.module
                 .define_function(id, &mut scope_ctx.ctx, &mut NullTrapSink {})
                 .unwrap();
+            self.module.clear_context(&mut scope_ctx.ctx);
         }
 
         self.translate_additive(&v.body)
@@ -152,8 +153,41 @@ impl<'a> Translator<'a> {
                 let func = self.module.declare_func_in_func(*id, &mut self.builder.func);
                 let call = self.builder.ins().call(func, &[]);
                 self.builder.inst_results(call)[0]
+            },
+            Primary::Block(s) => {
+                let mut scope_ctx = ScopeContext::new(self.module.make_context());
+
+                let mut binds = self.binds.clone();
+                let mut translator = Translator::new(scope_ctx.get_builder(), &mut binds, &mut self.module);
+                let ret = translator.translate(&s);
+
+                translator.builder.ins().return_(&[ret]);
+                translator.builder.finalize();
+
+                let id = self.module
+                    .declare_function(&self.get_identifier("block"), Linkage::Local, &scope_ctx.ctx.func.signature)
+                    .map_err(|e| e.to_string())
+                    .unwrap();
+                self.module
+                    .define_function(id, &mut scope_ctx.ctx, &mut NullTrapSink {})
+                    .unwrap();
+                self.module.clear_context(&mut scope_ctx.ctx);
+                let func = self.module.declare_func_in_func(id, &mut self.builder.func);
+                let call = self.builder.ins().call(func, &[]);
+                self.builder.inst_results(call)[0]
             }
             _ => unimplemented!(),
         }
+    }
+
+    fn get_identifier(&self, name: &str) -> String {
+        let mut i = 0;
+
+        let mut identifier = format!("{}_{}", name, i);
+        while self.module.get_name(&identifier).is_some() {
+            identifier = format!("{}_{}", name, i);
+            i += 1;
+        }
+        identifier
     }
 }

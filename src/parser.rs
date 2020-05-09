@@ -2,7 +2,7 @@ use crate::token::*;
 use nom::{
     branch::alt,
     character::complete::{alpha1, char, digit1, space0},
-    combinator::{map, map_res},
+    combinator::{all_consuming, map, map_res},
     multi::{fold_many0, separated_list},
     sequence::{delimited, pair, separated_pair},
     IResult,
@@ -10,12 +10,12 @@ use nom::{
 use std::str::FromStr;
 
 fn number(input: &str) -> IResult<&str, Primary> {
-    let (input, n) = map_res(delimited(space0, digit1, space0), FromStr::from_str)(input)?;
+    let (input, n) = map_res(digit1, FromStr::from_str)(input)?;
     Ok((input, Primary::Number(n)))
 }
 
 fn identifier(input: &str) -> IResult<&str, Primary> {
-    let (input, s) = delimited(space0, alpha1, space0)(input)?;
+    let (input, s) = alpha1(input)?;
     Ok((input, Primary::Identifier(s.to_string())))
 }
 
@@ -25,7 +25,7 @@ fn block(input: &str) -> IResult<&str, Primary> {
 }
 
 fn primary(input: &str) -> IResult<&str, Primary> {
-    alt((number, identifier, block))(input)
+    delimited(space0, alt((number, identifier, block)), space0)(input)
 }
 
 fn multitive(input: &str) -> IResult<&str, Multitive> {
@@ -85,7 +85,7 @@ fn statement(input: &str) -> IResult<&str, Statement> {
 }
 
 pub fn parse(input: &str) -> IResult<&str, AST> {
-    statement(input)
+    all_consuming(statement)(input)
 }
 
 #[test]
