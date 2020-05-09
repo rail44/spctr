@@ -1,7 +1,7 @@
 use crate::token::*;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
-use cranelift_codegen::ir::types::*;
+use cranelift_codegen::ir::{condcodes::FloatCC, types::*};
 use cranelift_codegen::Context;
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
@@ -48,7 +48,7 @@ impl ScopeContext {
         }
     }
 
-    fn get_builder<'a>(&'a mut self) -> FunctionBuilder<'a> {
+    fn get_builder(&mut self) -> FunctionBuilder {
         let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_context);
         let block = builder.create_block();
         builder.append_block_params_for_function_params(block);
@@ -112,9 +112,50 @@ impl<'a> Translator<'a> {
 
     fn translate_expression(&mut self, v: &Expression) -> Value {
         match v {
-            Expression::Additive(a) => self.translate_additive(a),
-            _ => unimplemented!(),
+            Expression::Comparison(a) => self.translate_comparison(a),
+            Expression::If { cond, cons, alt } => {
+                let cond_result = self.translate_expression(cond);
+                let cons_block = self.builder.create_block();
+                let alt_block = self.builder.create_block();
+
+                let continuation = self.builder.create_block();
+
+                self.builder.ins().brz(cond_result, alt_block, &[]);
+                self.builder.ins().jump(cons_block, &[]);
+                self.builder.switch_to_block(cons_block);
+                self.builder.seal_block(cons_block);
+                let cons_value = self.translate_expression(cons);
+                self.builder.ins().jump(continuation, &[cons_value]);
+
+                self.builder.switch_to_block(alt_block);
+                self.builder.seal_block(alt_block);
+                let alt_value = self.translate_expression(alt);
+                self.builder.ins().jump(continuation, &[alt_value]);
+
+                self.builder.append_block_param(continuation, F64);
+                self.builder.switch_to_block(continuation);
+                self.builder.seal_block(continuation);
+
+                self.builder.block_params(continuation)[0]
+            }
         }
+    }
+
+    fn translate_comparison(&mut self, v: &Comparison) -> Value {
+        let mut lhs = self.translate_additive(&v.left);
+        for right in &v.rights {
+            match right {
+                ComparisonRight::Equal(r) => {
+                    let rhs = self.translate_additive(&r);
+                    lhs = self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
+                }
+                ComparisonRight::NotEqual(r) => {
+                    let rhs = self.translate_additive(&r);
+                    lhs = self.builder.ins().fcmp(FloatCC::NotEqual, lhs, rhs)
+                }
+            }
+        }
+        lhs
     }
 
     fn translate_additive(&mut self, v: &Additive) -> Value {
@@ -131,7 +172,7 @@ impl<'a> Translator<'a> {
                 }
             }
         }
-        return lhs;
+        lhs
     }
 
     fn translate_multitive(&mut self, v: &Multitive) -> Value {
@@ -190,7 +231,6 @@ impl<'a> Translator<'a> {
                 let call = self.builder.ins().call(func, &[]);
                 self.builder.inst_results(call)[0]
             }
-            _ => unimplemented!(),
         }
     }
 

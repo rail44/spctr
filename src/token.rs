@@ -10,8 +10,24 @@ pub struct Statement {
 
 #[derive(Clone, Debug)]
 pub enum Expression {
-    Additive(Additive),
-    If(Box<Expression>, Box<Expression>, Box<Expression>),
+    Comparison(Comparison),
+    If {
+        cond: Box<Expression>,
+        cons: Box<Expression>,
+        alt: Box<Expression>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct Comparison {
+    pub left: Additive,
+    pub rights: Vec<ComparisonRight>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ComparisonRight {
+    Equal(Additive),
+    NotEqual(Additive),
 }
 
 #[derive(Clone, Debug)]
@@ -48,5 +64,5 @@ pub enum Primary {
     Number(f64),
     Identifier(String),
     Block(Box<Statement>),
-    Struct(Struct),
+    // Struct(Struct),
 }

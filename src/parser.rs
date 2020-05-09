@@ -46,7 +46,7 @@ fn multitive(input: &str) -> IResult<&str, Multitive> {
     Ok((input, Multitive { left, rights }))
 }
 
-fn additive(input: &str) -> IResult<&str, Expression> {
+fn additive(input: &str) -> IResult<&str, Additive> {
     let (input, left) = multitive(input)?;
     let (input, rights) = fold_many0(
         pair(alt((char('+'), char('-'))), multitive),
@@ -60,7 +60,24 @@ fn additive(input: &str) -> IResult<&str, Expression> {
             vec
         },
     )(input)?;
-    Ok((input, Expression::Additive(Additive { left, rights })))
+    Ok((input, Additive { left, rights }))
+}
+
+fn comparison(input: &str) -> IResult<&str, Expression> {
+    let (input, left) = additive(input)?;
+    let (input, rights) = fold_many0(
+        pair(alt((tag("="), tag("!="))), additive),
+        Vec::new(),
+        |mut vec, (op, val)| {
+            match op {
+                "=" => vec.push(ComparisonRight::Equal(val)),
+                "!=" => vec.push(ComparisonRight::NotEqual(val)),
+                _ => unreachable!(),
+            };
+            vec
+        },
+    )(input)?;
+    Ok((input, Expression::Comparison(Comparison { left, rights })))
 }
 
 fn bind(input: &str) -> IResult<&str, (String, Expression)> {
@@ -86,16 +103,23 @@ fn statement(input: &str) -> IResult<&str, Statement> {
 }
 
 fn if_(input: &str) -> IResult<&str, Expression> {
-    let (input, (cond, t, f)) =
-        preceded(tag("if"), tuple((expression, expression, expression)))(input)?;
+    let (input, (cond, cons, alt)) = delimited(
+        space0,
+        preceded(tag("if"), tuple((expression, expression, expression))),
+        space0,
+    )(input)?;
     Ok((
         input,
-        Expression::If(Box::new(cond), Box::new(t), Box::new(f)),
+        Expression::If {
+            cond: Box::new(cond),
+            cons: Box::new(cons),
+            alt: Box::new(alt),
+        },
     ))
 }
 
 fn expression(input: &str) -> IResult<&str, Expression> {
-    alt((if_, additive))(input)
+    alt((if_, comparison))(input)
 }
 
 pub fn parse(input: &str) -> IResult<&str, AST> {
