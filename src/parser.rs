@@ -1,7 +1,7 @@
 use crate::token::*;
 use nom::{
     branch::alt,
-    bytes::complete::tag,
+    bytes::complete::{take_until, tag},
     character::complete::{alpha1, char, digit1, space0},
     combinator::{all_consuming, map, map_res},
     multi::{fold_many0, separated_list},
@@ -25,8 +25,13 @@ fn block(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::Block(Box::new(s))))
 }
 
+fn string(input: &str) -> IResult<&str, Primary> {
+    let (input, s) = delimited(char('"'), take_until("\""), char('"'))(input)?;
+    Ok((input, Primary::String(s.to_string())))
+}
+
 fn primary(input: &str) -> IResult<&str, Primary> {
-    delimited(space0, alt((number, identifier, block)), space0)(input)
+    delimited(space0, alt((number, string, identifier, block)), space0)(input)
 }
 
 fn multitive(input: &str) -> IResult<&str, Multitive> {

@@ -62,6 +62,7 @@ pub enum MultitiveRight {
 #[derive(Clone, Debug)]
 pub enum Primary {
     Number(f64),
+    String(String),
     Identifier(String),
     Block(Box<Statement>),
     // Struct(Struct),

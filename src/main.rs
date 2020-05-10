@@ -44,7 +44,7 @@ fn main() -> Result<(), failure::Error> {
     println!("{:?}", token);
 
     let ptr = jit::compile(&token);
-    let compiled = unsafe { mem::transmute::<_, fn() -> f64>(ptr) };
-    println!("{:?}", compiled());
+    let compiled = unsafe { mem::transmute::<_, fn() -> [f64; 64]>(ptr) };
+    println!("{}", compiled().iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "));
     Ok(())
 }
