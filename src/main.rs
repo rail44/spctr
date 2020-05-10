@@ -44,7 +44,11 @@ fn main() -> Result<(), failure::Error> {
     println!("{:?}", token);
 
     let ptr = jit::compile(&token);
-    let compiled = unsafe { mem::transmute::<_, fn() -> [f64; 64]>(ptr) };
-    println!("{}", compiled().iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "));
+    let compiled = unsafe { mem::transmute::<_, fn() -> [u64; 64]>(ptr) };
+    let result = compiled();
+    println!("{}", result.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "));
+    println!("{}", f64::from_ne_bytes(result[0].to_ne_bytes()));
+
+    println!("{}", String::from_utf8_lossy(unsafe { result.align_to::<u8>().1 }));
     Ok(())
 }

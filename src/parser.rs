@@ -3,7 +3,7 @@ use nom::{
     branch::alt,
     bytes::complete::{take_until, tag},
     character::complete::{alpha1, char, digit1, space0},
-    combinator::{all_consuming, map, map_res},
+    combinator::{all_consuming, map, opt},
     multi::{fold_many0, separated_list},
     sequence::{delimited, pair, preceded, separated_pair, tuple},
     IResult,
@@ -11,7 +11,13 @@ use nom::{
 use std::str::FromStr;
 
 fn number(input: &str) -> IResult<&str, Primary> {
-    let (input, n) = map_res(digit1, FromStr::from_str)(input)?;
+    let (input, n) = map(pair(opt(char('-')), digit1), |(neg, v)| {
+        let n: f64 = FromStr::from_str(v).unwrap();
+        if neg.is_some() {
+            return -n;
+        }
+        n
+    })(input)?;
     Ok((input, Primary::Number(n)))
 }
 

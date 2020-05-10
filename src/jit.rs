@@ -72,7 +72,7 @@ impl ScopeContext {
     fn new(mut ctx: Context) -> ScopeContext {
         let builder_context = FunctionBuilderContext::new();
         for _ in 0..64 {
-            ctx.func.signature.returns.push(AbiParam::new(F64));
+            ctx.func.signature.returns.push(AbiParam::new(I64));
         }
 
         ScopeContext {
@@ -87,7 +87,7 @@ impl ScopeContext {
         builder.append_block_params_for_function_params(block);
         builder.switch_to_block(block);
         builder.seal_block(block);
-        builder.ins().f64const(0.0);
+        builder.ins().iconst(I64, 0);
         builder
     }
 }
@@ -134,6 +134,7 @@ impl<'a> Translator<'a> {
             let mut translator = Translator::new(builder, self.binds, &mut self.module);
             let ret = translator.translate_expression(&body);
             translator.builder.ins().return_(ret.as_slice());
+
             translator.builder.finalize();
             self.module
                 .define_function(id, &mut scope_ctx.ctx, &mut NullTrapSink {})
@@ -168,7 +169,7 @@ impl<'a> Translator<'a> {
 
 
                 for _ in 0..64 {
-                    self.builder.append_block_param(continuation, F64);
+                    self.builder.append_block_param(continuation, I64);
                 }
 
                 self.builder.switch_to_block(continuation);
@@ -202,7 +203,10 @@ impl<'a> Translator<'a> {
             match right {
                 AdditiveRight::Add(r) => {
                     let rhs = self.translate_multitive(&r);
-                    lhs = SpctrValue::from_value(self.builder.ins().fadd(lhs.get_first(), rhs.get_first()))
+                    let r = self.builder.ins().bitcast(F64, rhs.get_first());
+                    let l = self.builder.ins().bitcast(F64, lhs.get_first());
+                    let v = self.builder.ins().fadd(r, l);
+                    lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
                 }
                 AdditiveRight::Sub(r) => {
                     let rhs = self.translate_multitive(&r);
@@ -232,10 +236,23 @@ impl<'a> Translator<'a> {
 
     fn translate_primary(&mut self, v: &Primary) -> SpctrValue {
         match v {
-            Primary::Number(v) => SpctrValue::from_value(self.builder.ins().f64const(v.clone())),
+            Primary::Number(v) => {
+                let v = self.builder.ins().f64const(v.clone());
+                SpctrValue::from_value(self.builder.ins().bitcast(I64, v))
+            }
             Primary::String(s) => {
-                let bytes = s.as_bytes();
-                let values: Vec<Value> = bytes.iter().map(|b| self.builder.ins().f64const(b.clone() as f64)).collect();
+                let mut bytes = s.clone().into_bytes();
+                if bytes.len() % 8 > 0 {
+                    let i = 8 - (bytes.len() % 8);
+                    for _ in 0..i {
+                        bytes.push(0);
+                    }
+                }
+                let (_, eight_bytes, _) = unsafe { bytes.align_to::<u64>() };
+
+                let values: Vec<Value> = eight_bytes.iter().map(|b| {
+                    self.builder.ins().iconst(I64, *b as i64)
+                }).collect();
                 SpctrValue::from_slice(&values)
             }
             Primary::Identifier(name) => {
