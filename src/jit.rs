@@ -15,11 +15,11 @@ pub enum SpctrType {
     String
 }
 
-struct SpctrValue([Value; 64]);
+struct SpctrValue([Value; 32]);
 
 impl SpctrValue {
     fn new() -> SpctrValue {
-        SpctrValue([Value::new(0); 64])
+        SpctrValue([Value::new(0); 32])
     }
 
     fn from_value(kind: Value, v: Value) -> SpctrValue {
@@ -41,7 +41,7 @@ impl SpctrValue {
         &self.0
     }
 
-    fn into_array(self) -> [Value; 64] {
+    fn into_array(self) -> [Value; 32] {
         self.0
     }
 
@@ -84,7 +84,7 @@ struct ScopeContext {
 impl ScopeContext {
     fn new(mut ctx: Context) -> ScopeContext {
         let builder_context = FunctionBuilderContext::new();
-        for _ in 0..64 {
+        for _ in 0..32 {
             ctx.func.signature.returns.push(AbiParam::new(I64));
         }
 
@@ -181,7 +181,7 @@ impl<'a> Translator<'a> {
                 self.builder.ins().jump(continuation, alt_value.as_slice());
 
 
-                for _ in 0..64 {
+                for _ in 0..32 {
                     self.builder.append_block_param(continuation, I64);
                 }
 
@@ -196,7 +196,7 @@ impl<'a> Translator<'a> {
     fn translate_comparison(&mut self, v: &Comparison) -> SpctrValue {
         let mut lhs = self.translate_additive(&v.left);
         for right in &v.rights {
-            match right {
+            let result = match right {
                 ComparisonRight::Equal(r) => {
                     let rhs = self.translate_additive(&r);
                     let l_array = lhs.into_array();
@@ -206,8 +206,7 @@ impl<'a> Translator<'a> {
                         let b = self.builder.ins().icmp(IntCC::Equal, *l, *r);
                         result = self.builder.ins().band(result, b);
                     }
-                    let kind = self.builder.ins().iconst(I64, SpctrType::Bool as i64);
-                    lhs = SpctrValue::from_value(kind, result);
+                    result
                 }
                 ComparisonRight::NotEqual(r) => {
                     let rhs = self.translate_additive(&r);
@@ -218,10 +217,12 @@ impl<'a> Translator<'a> {
                         let b = self.builder.ins().icmp(IntCC::NotEqual, *l, *r);
                         result = self.builder.ins().band(result, b);
                     }
-                    let kind = self.builder.ins().iconst(I64, SpctrType::Bool as i64);
-                    lhs = SpctrValue::from_value(kind, result);
+                    result
                 }
-            }
+            };
+            let kind = self.builder.ins().iconst(I64, SpctrType::Bool as i64);
+            let ibool = self.builder.ins().bint(I64, result);
+            lhs = SpctrValue::from_value(kind, ibool);
         }
         lhs
     }

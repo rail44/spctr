@@ -31,16 +31,16 @@ fn main() -> Result<(), failure::Error> {
     Ok(())
 }
 
-fn eval(input: &str) -> Result<[u64; 64], failure::Error> {
+fn eval(input: &str) -> Result<[u64; 32], failure::Error> {
     let token = parser::parse(&input)
         .map_err(|s| failure::format_err!("Parsing failed!, {}", s))?
         .1;
     let ptr = jit::compile(&token);
-    let compiled = unsafe { mem::transmute::<_, fn() -> [u64; 64]>(ptr) };
+    let compiled = unsafe { mem::transmute::<_, fn() -> [u64; 32]>(ptr) };
     Ok(compiled())
 }
 
-fn display(v: [u64; 64]) {
+fn display(v: [u64; 32]) {
     let kind = SpctrType::from_u64(v[0]).unwrap();
     match kind {
         SpctrType::Number => {
@@ -50,7 +50,7 @@ fn display(v: [u64; 64]) {
             println!("{}", String::from_utf8_lossy(unsafe { v[1..].align_to::<u8>().1 }));
         }
         SpctrType::Bool => {
-            println!("{}", if v[1] == 0 { "true" } else { "false" });
+            println!("{}", if v[1] == 0 { "false" } else { "true" });
         }
     }
 }
