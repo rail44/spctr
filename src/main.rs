@@ -5,7 +5,6 @@ mod token;
 use clap::{App, Arg};
 
 use std::fs;
-use std::io::{stdin, Read};
 use std::mem;
 
 fn main() -> Result<(), failure::Error> {
@@ -15,39 +14,29 @@ fn main() -> Result<(), failure::Error> {
         .arg(Arg::with_name("use_stdin").short("i").takes_value(false))
         .get_matches();
 
-    let token = match matches.value_of("input") {
+    let input = match matches.value_of("input") {
         Some(v) => {
-            parser::parse(v)
-                .map_err(|s| failure::format_err!("Parsing failed!, {}", s))?
-                .1
+            v.to_string()
         }
         None => {
             let path = matches.value_of("FILE").unwrap();
-            let input = fs::read_to_string(path)?;
-            parser::parse(&input)
-                .map_err(|s| failure::format_err!("Parsing failed!, {}", s))?
-                .1
+            fs::read_to_string(path)?
         }
     };
 
-    if matches.is_present("use_stdin") {
-        let mut s = String::new();
-        stdin().read_to_string(&mut s)?;
-
-        // println!(
-        //     "{}",
-        //     eval_source(token, &mut Env::root())?.call(vec![Value::String(s)])?
-        // );
-        return Ok(());
-    }
-
-    println!("{:?}", token);
-
-    let ptr = jit::compile(&token);
-    let compiled = unsafe { mem::transmute::<_, fn() -> [u64; 64]>(ptr) };
-    let result = compiled();
+    let result = eval(&input)?;
     println!("{}", result.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "));
     println!("{}", f64::from_ne_bytes(result[0].to_ne_bytes()));
     println!("{}", String::from_utf8_lossy(unsafe { result.align_to::<u8>().1 }));
     Ok(())
+}
+
+fn eval(input: &str) -> Result<[u64; 64], failure::Error> {
+    let token = parser::parse(&input)
+        .map_err(|s| failure::format_err!("Parsing failed!, {}", s))?
+        .1;
+    println!("{:?}", token);
+    let ptr = jit::compile(&token);
+    let compiled = unsafe { mem::transmute::<_, fn() -> [u64; 64]>(ptr) };
+    Ok(compiled())
 }

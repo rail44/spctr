@@ -223,12 +223,15 @@ impl<'a> Translator<'a> {
                     let rhs = self.translate_multitive(&r);
                     let r = self.builder.ins().bitcast(F64, rhs.get_first());
                     let l = self.builder.ins().bitcast(F64, lhs.get_first());
-                    let v = self.builder.ins().fadd(r, l);
+                    let v = self.builder.ins().fadd(l, r);
                     lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
                 }
                 AdditiveRight::Sub(r) => {
                     let rhs = self.translate_multitive(&r);
-                    lhs = SpctrValue::from_value(self.builder.ins().fsub(lhs.get_first(), rhs.get_first()))
+                    let r = self.builder.ins().bitcast(F64, rhs.get_first());
+                    let l = self.builder.ins().bitcast(F64, lhs.get_first());
+                    let v = self.builder.ins().fsub(l, r);
+                    lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
                 }
             }
         }
@@ -241,11 +244,17 @@ impl<'a> Translator<'a> {
             match right {
                 MultitiveRight::Mul(r) => {
                     let rhs = self.translate_primary(&r);
-                    lhs = SpctrValue::from_value(self.builder.ins().fmul(lhs.get_first(), rhs.get_first()))
+                    let r = self.builder.ins().bitcast(F64, rhs.get_first());
+                    let l = self.builder.ins().bitcast(F64, lhs.get_first());
+                    let v = self.builder.ins().fmul(l, r);
+                    lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
                 }
                 MultitiveRight::Div(r) => {
                     let rhs = self.translate_primary(&r);
-                    lhs = SpctrValue::from_value(self.builder.ins().fdiv(lhs.get_first(), rhs.get_first()))
+                    let r = self.builder.ins().bitcast(F64, rhs.get_first());
+                    let l = self.builder.ins().bitcast(F64, lhs.get_first());
+                    let v = self.builder.ins().fdiv(l, r);
+                    lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
                 }
             }
         }
