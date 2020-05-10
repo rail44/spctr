@@ -1,7 +1,7 @@
 use crate::token::*;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
-use cranelift_codegen::ir::{condcodes::FloatCC, types::*};
+use cranelift_codegen::ir::{condcodes::IntCC, types::*};
 use cranelift_codegen::Context;
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
@@ -30,6 +30,10 @@ impl SpctrValue {
 
     fn as_slice(&self) -> &[Value] {
         &self.0
+    }
+
+    fn into_array(self) -> [Value; 64] {
+        self.0
     }
 
     fn get_first(self) -> Value {
@@ -186,11 +190,25 @@ impl<'a> Translator<'a> {
             match right {
                 ComparisonRight::Equal(r) => {
                     let rhs = self.translate_additive(&r);
-                    lhs = SpctrValue::from_value(self.builder.ins().fcmp(FloatCC::Equal, lhs.get_first(), rhs.get_first()))
+                    let l_array = lhs.into_array();
+                    let r_array = rhs.into_array();
+                    let mut result = self.builder.ins().bconst(B1, true);
+                    for (l, r) in l_array.iter().zip(r_array.iter()) {
+                        let b = self.builder.ins().icmp(IntCC::Equal, *l, *r);
+                        result = self.builder.ins().band(result, b);
+                    }
+                    lhs = SpctrValue::from_value(result);
                 }
                 ComparisonRight::NotEqual(r) => {
                     let rhs = self.translate_additive(&r);
-                    lhs = SpctrValue::from_value(self.builder.ins().fcmp(FloatCC::NotEqual, lhs.get_first(), rhs.get_first()))
+                    let l_array = lhs.into_array();
+                    let r_array = rhs.into_array();
+                    let mut result = self.builder.ins().bconst(B1, true);
+                    for (l, r) in l_array.iter().zip(r_array.iter()) {
+                        let b = self.builder.ins().icmp(IntCC::NotEqual, *l, *r);
+                        result = self.builder.ins().band(result, b);
+                    }
+                    lhs = SpctrValue::from_value(result);
                 }
             }
         }
