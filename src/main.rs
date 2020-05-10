@@ -6,6 +6,8 @@ use clap::{App, Arg};
 
 use std::fs;
 use std::mem;
+use crate::jit::SpctrType;
+use num_traits::cast::FromPrimitive;
 
 fn main() -> Result<(), failure::Error> {
     let matches = App::new("spctr")
@@ -25,9 +27,7 @@ fn main() -> Result<(), failure::Error> {
     };
 
     let result = eval(&input)?;
-    println!("{}", result.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "));
-    println!("{}", f64::from_ne_bytes(result[0].to_ne_bytes()));
-    println!("{}", String::from_utf8_lossy(unsafe { result.align_to::<u8>().1 }));
+    display(result);
     Ok(())
 }
 
@@ -35,8 +35,22 @@ fn eval(input: &str) -> Result<[u64; 64], failure::Error> {
     let token = parser::parse(&input)
         .map_err(|s| failure::format_err!("Parsing failed!, {}", s))?
         .1;
-    println!("{:?}", token);
     let ptr = jit::compile(&token);
     let compiled = unsafe { mem::transmute::<_, fn() -> [u64; 64]>(ptr) };
     Ok(compiled())
+}
+
+fn display(v: [u64; 64]) {
+    let kind = SpctrType::from_u64(v[0]).unwrap();
+    match kind {
+        SpctrType::Number => {
+            println!("{}", f64::from_ne_bytes(v[1].to_ne_bytes()));
+        }
+        SpctrType::String => {
+            println!("{}", String::from_utf8_lossy(unsafe { v[1..].align_to::<u8>().1 }));
+        }
+        SpctrType::Bool => {
+            println!("{}", if v[1] == 0 { "true" } else { "false" });
+        }
+    }
 }

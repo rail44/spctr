@@ -6,6 +6,14 @@ use cranelift_codegen::Context;
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use std::collections::HashMap;
+use num_derive::{FromPrimitive, ToPrimitive};
+
+#[derive(FromPrimitive, ToPrimitive)]
+pub enum SpctrType {
+    Number,
+    Bool,
+    String
+}
 
 struct SpctrValue([Value; 64]);
 
@@ -14,18 +22,19 @@ impl SpctrValue {
         SpctrValue([Value::new(0); 64])
     }
 
-    fn from_value(v: Value) -> SpctrValue {
+    fn from_value(kind: Value, v: Value) -> SpctrValue {
         let mut spctr_v = SpctrValue::new();
-        spctr_v.0[0] = v;
+        spctr_v.0[0] = kind;
+        spctr_v.0[1] = v;
         spctr_v
     }
 
     fn from_slice(slice: &[Value]) -> SpctrValue {
-        let mut v = SpctrValue::new();
-        for (i, b) in slice.iter().enumerate() {
-            v.0[i] = b.clone();
+        let mut sv = SpctrValue::new();
+        for (i, v) in slice.iter().enumerate() {
+            sv.0[i] = *v;
         }
-        v
+        sv
     }
 
     fn as_slice(&self) -> &[Value] {
@@ -36,8 +45,8 @@ impl SpctrValue {
         self.0
     }
 
-    fn get_first(self) -> Value {
-        self.0[0]
+    fn get_first_value(self) -> Value {
+        self.0[1]
     }
 }
 
@@ -159,7 +168,7 @@ impl<'a> Translator<'a> {
 
                 let continuation = self.builder.create_block();
 
-                self.builder.ins().brz(cond_result.get_first(), alt_block, &[]);
+                self.builder.ins().brz(cond_result.get_first_value(), alt_block, &[]);
                 self.builder.ins().jump(cons_block, &[]);
                 self.builder.switch_to_block(cons_block);
                 self.builder.seal_block(cons_block);
@@ -197,7 +206,8 @@ impl<'a> Translator<'a> {
                         let b = self.builder.ins().icmp(IntCC::Equal, *l, *r);
                         result = self.builder.ins().band(result, b);
                     }
-                    lhs = SpctrValue::from_value(result);
+                    let kind = self.builder.ins().iconst(I64, SpctrType::Bool as i64);
+                    lhs = SpctrValue::from_value(kind, result);
                 }
                 ComparisonRight::NotEqual(r) => {
                     let rhs = self.translate_additive(&r);
@@ -208,7 +218,8 @@ impl<'a> Translator<'a> {
                         let b = self.builder.ins().icmp(IntCC::NotEqual, *l, *r);
                         result = self.builder.ins().band(result, b);
                     }
-                    lhs = SpctrValue::from_value(result);
+                    let kind = self.builder.ins().iconst(I64, SpctrType::Bool as i64);
+                    lhs = SpctrValue::from_value(kind, result);
                 }
             }
         }
@@ -221,17 +232,19 @@ impl<'a> Translator<'a> {
             match right {
                 AdditiveRight::Add(r) => {
                     let rhs = self.translate_multitive(&r);
-                    let r = self.builder.ins().bitcast(F64, rhs.get_first());
-                    let l = self.builder.ins().bitcast(F64, lhs.get_first());
+                    let r = self.builder.ins().bitcast(F64, rhs.get_first_value());
+                    let l = self.builder.ins().bitcast(F64, lhs.get_first_value());
                     let v = self.builder.ins().fadd(l, r);
-                    lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
+                    let kind = self.builder.ins().iconst(I64, SpctrType::Number as i64);
+                    lhs = SpctrValue::from_value(kind, self.builder.ins().bitcast(I64, v));
                 }
                 AdditiveRight::Sub(r) => {
                     let rhs = self.translate_multitive(&r);
-                    let r = self.builder.ins().bitcast(F64, rhs.get_first());
-                    let l = self.builder.ins().bitcast(F64, lhs.get_first());
+                    let r = self.builder.ins().bitcast(F64, rhs.get_first_value());
+                    let l = self.builder.ins().bitcast(F64, lhs.get_first_value());
                     let v = self.builder.ins().fsub(l, r);
-                    lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
+                    let kind = self.builder.ins().iconst(I64, SpctrType::Number as i64);
+                    lhs = SpctrValue::from_value(kind, self.builder.ins().bitcast(I64, v));
                 }
             }
         }
@@ -244,17 +257,19 @@ impl<'a> Translator<'a> {
             match right {
                 MultitiveRight::Mul(r) => {
                     let rhs = self.translate_primary(&r);
-                    let r = self.builder.ins().bitcast(F64, rhs.get_first());
-                    let l = self.builder.ins().bitcast(F64, lhs.get_first());
+                    let r = self.builder.ins().bitcast(F64, rhs.get_first_value());
+                    let l = self.builder.ins().bitcast(F64, lhs.get_first_value());
                     let v = self.builder.ins().fmul(l, r);
-                    lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
+                    let kind = self.builder.ins().iconst(I64, SpctrType::Number as i64);
+                    lhs = SpctrValue::from_value(kind, self.builder.ins().bitcast(I64, v));
                 }
                 MultitiveRight::Div(r) => {
                     let rhs = self.translate_primary(&r);
-                    let r = self.builder.ins().bitcast(F64, rhs.get_first());
-                    let l = self.builder.ins().bitcast(F64, lhs.get_first());
+                    let r = self.builder.ins().bitcast(F64, rhs.get_first_value());
+                    let l = self.builder.ins().bitcast(F64, lhs.get_first_value());
                     let v = self.builder.ins().fdiv(l, r);
-                    lhs = SpctrValue::from_value(self.builder.ins().bitcast(I64, v));
+                    let kind = self.builder.ins().iconst(I64, SpctrType::Number as i64);
+                    lhs = SpctrValue::from_value(kind, self.builder.ins().bitcast(I64, v));
                 }
             }
         }
@@ -265,7 +280,8 @@ impl<'a> Translator<'a> {
         match v {
             Primary::Number(v) => {
                 let v = self.builder.ins().f64const(v.clone());
-                SpctrValue::from_value(self.builder.ins().bitcast(I64, v))
+                let kind = self.builder.ins().iconst(I64, SpctrType::Number as i64);
+                SpctrValue::from_value(kind, self.builder.ins().bitcast(I64, v))
             }
             Primary::String(s) => {
                 let mut bytes = s.clone().into_bytes();
@@ -277,9 +293,11 @@ impl<'a> Translator<'a> {
                 }
                 let (_, eight_bytes, _) = unsafe { bytes.align_to::<u64>() };
 
-                let values: Vec<Value> = eight_bytes.iter().map(|b| {
+                let kind = self.builder.ins().iconst(I64, SpctrType::String as i64);
+                let mut values = vec![kind];
+                values.extend(eight_bytes.iter().map(|b| {
                     self.builder.ins().iconst(I64, *b as i64)
-                }).collect();
+                }));
                 SpctrValue::from_slice(&values)
             }
             Primary::Identifier(name) => {
