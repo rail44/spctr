@@ -175,6 +175,7 @@ impl<'a> Translator<'a> {
                 let mut translator = self.fork();
                 translator.translate(statement)
             }
+            Primary::Function(_, _) => unimplemented!(),
         }
     }
 }

@@ -31,13 +31,33 @@ fn block(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::Block(Box::new(s))))
 }
 
+fn arrow(input: &str) -> IResult<&str, &str> {
+    delimited(space0, tag("=>"), space0)(input)
+}
+
+fn args(input: &str) -> IResult<&str, Vec<String>> {
+    map(
+        delimited(char('('), separated_list(char(','), alpha1), char(')')),
+        |args: Vec<&str>| args.into_iter().map(|s| s.to_string()).collect(),
+    )(input)
+}
+
+fn function(input: &str) -> IResult<&str, Primary> {
+    let (input, s) = pair(args, preceded(arrow, expression))(input)?;
+    Ok((input, Primary::Function(s.0, Box::new(s.1))))
+}
+
 fn string(input: &str) -> IResult<&str, Primary> {
     let (input, s) = delimited(char('"'), take_until("\""), char('"'))(input)?;
     Ok((input, Primary::String(s.to_string())))
 }
 
 fn primary(input: &str) -> IResult<&str, Primary> {
-    delimited(space0, alt((number, string, identifier, block)), space0)(input)
+    delimited(
+        space0,
+        alt((number, string, identifier, block, function)),
+        space0,
+    )(input)
 }
 
 fn multitive(input: &str) -> IResult<&str, Multitive> {
