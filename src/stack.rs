@@ -10,9 +10,12 @@ pub enum Cmd {
     Mul,
     Equal,
     NotEqual,
-    Return,
+    Return(usize),
+    Load(usize),
+    Store,
     NumberConst(f64),
     StringConst(Rc<String>),
+    FunctionAddr,
     LabelCounter(usize),
     JumpToLabel(usize),
     JumpRel(usize),
@@ -68,7 +71,7 @@ impl<'a> Translator<'a> {
         let mut cmd = Vec::new();
         for (id, body) in binds {
             let mut body_cmd = self.translate_expression(&body);
-            body_cmd.push(Cmd::Return);
+            body_cmd.push(Cmd::Return(0));
 
             cmd.push(Cmd::ProgramCounter);
             cmd.push(Cmd::NumberConst(5_f64));
@@ -175,7 +178,41 @@ impl<'a> Translator<'a> {
                 let mut translator = self.fork();
                 translator.translate(statement)
             }
-            Primary::Function(_, _) => unimplemented!(),
+            Primary::Function(args, body) => {
+                let mut translator = self.fork();
+                let mut args = args.clone();
+                args.reverse();
+
+                let mut body_cmd = Vec::new();
+                for (i, arg) in args.iter().enumerate() {
+                    let id = translator.bind_cnt;
+                    translator.env.insert(arg.clone(), id);
+                    translator.bind_cnt += 1;
+
+                    body_cmd.push(Cmd::Store);
+                    body_cmd.push(Cmd::ProgramCounter);
+                    body_cmd.push(Cmd::NumberConst(5_f64));
+                    body_cmd.push(Cmd::Add);
+                    body_cmd.push(Cmd::LabelCounter(id));
+                    body_cmd.push(Cmd::JumpRel(3));
+                    body_cmd.push(Cmd::Load(i));
+                    body_cmd.push(Cmd::Return(0));
+                }
+                body_cmd.append(&mut translator.translate_expression(body));
+                body_cmd.push(Cmd::Return(args.len()));
+
+                let mut cmd = Vec::new();
+                cmd.push(Cmd::ProgramCounter);
+                cmd.push(Cmd::NumberConst(5_f64));
+                cmd.push(Cmd::Add);
+                cmd.push(Cmd::FunctionAddr);
+                cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
+                cmd.append(&mut body_cmd);
+                cmd
+            }
+            Primary::Call(name, args) => {
+                unimplemented!();
+            }
         }
     }
 }

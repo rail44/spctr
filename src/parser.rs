@@ -26,6 +26,13 @@ fn identifier(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::Identifier(s.to_string())))
 }
 
+fn call(input: &str) -> IResult<&str, Primary> {
+    map(
+        pair(alpha1, call_args),
+        |(name, args)| Primary::Call(name.to_string(), args)
+    )(input)
+}
+
 fn block(input: &str) -> IResult<&str, Primary> {
     let (input, s) = delimited(char('{'), statement, char('}'))(input)?;
     Ok((input, Primary::Block(Box::new(s))))
@@ -35,9 +42,13 @@ fn arrow(input: &str) -> IResult<&str, &str> {
     delimited(space0, tag("=>"), space0)(input)
 }
 
+fn call_args(input: &str) -> IResult<&str, Vec<Expression>> {
+    delimited(char('('), separated_list(char(','), expression), char(')'))(input)
+}
+
 fn args(input: &str) -> IResult<&str, Vec<String>> {
     map(
-        delimited(char('('), separated_list(char(','), alpha1), char(')')),
+        delimited(char('('), separated_list(char(','), delimited(space0, alpha1, space0)), char(')')),
         |args: Vec<&str>| args.into_iter().map(|s| s.to_string()).collect(),
     )(input)
 }
@@ -55,7 +66,7 @@ fn string(input: &str) -> IResult<&str, Primary> {
 fn primary(input: &str) -> IResult<&str, Primary> {
     delimited(
         space0,
-        alt((number, string, identifier, block, function)),
+        alt((number, string, call, identifier, block, function)),
         space0,
     )(input)
 }

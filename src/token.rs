@@ -64,6 +64,7 @@ pub enum Primary {
     Number(f64),
     String(String),
     Identifier(String),
+    Call(String, Vec<Expression>),
     Block(Box<Statement>),
     Function(Vec<String>, Box<Expression>),
     // Struct(Struct),

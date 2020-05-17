@@ -8,6 +8,7 @@ enum Value {
     Number(f64),
     Bool(bool),
     String(Rc<String>),
+    Function(usize),
 }
 
 impl Value {
@@ -30,6 +31,7 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
     let mut i: usize = 0;
     let mut label_map: HashMap<usize, usize> = HashMap::new();
     let mut stack: Vec<Value> = Vec::new();
+    let mut args: Vec<Vec<Value>> = vec!(Vec::new());
     while program.len() > i {
         use Cmd::*;
         match program[i] {
@@ -92,12 +94,26 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                     continue;
                 }
             }
-            Return => {
+            Return(arg_count) => {
                 let ret = stack.pop().unwrap();
+                for _ in 0..arg_count {
+                    stack.pop();
+                }
                 let addr = stack.pop().unwrap();
                 stack.push(ret);
                 i = addr.into_number()? as usize;
                 continue;
+            },
+            Load(i) => {
+                stack.push(args.last_mut().unwrap().get(i).unwrap().clone());
+            }
+            Store => {
+                let value = stack.pop().unwrap();
+                args.last_mut().unwrap().push(value);
+            }
+            FunctionAddr => {
+                let addr = stack.pop().unwrap().into_number()?;
+                stack.push(Value::Function(addr as usize));
             }
         }
 
