@@ -11,7 +11,7 @@ pub enum Cmd {
     Equal,
     NotEqual,
     Return,
-    Load(usize),
+    Load(usize, usize),
     NumberConst(f64),
     StringConst(Rc<String>),
     FunctionAddr,
@@ -24,13 +24,19 @@ pub enum Cmd {
     Call,
 }
 
+#[derive(Clone, Debug)]
+enum Identifier {
+    Bind(usize),
+    Arg(usize),
+}
+
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
     translator.translate(ast)
 }
 
 struct Translator<'a> {
-    env: HashMap<String, usize>,
+    env: HashMap<String, Identifier>,
     bind_cnt: usize,
     parent: Option<&'a Translator<'a>>,
 }
@@ -52,18 +58,21 @@ impl<'a> Translator<'a> {
         }
     }
 
-    fn get_bind(&self, name: &str) -> Option<usize> {
-        self.env
-            .get(name)
-            .cloned()
-            .or_else(|| self.parent.and_then(|p| p.get_bind(name)))
+    fn get_bind(&self, name: &str) -> Option<(Identifier, usize)> {
+        self.env.get(name).map_or_else(
+            || {
+                self.parent
+                    .and_then(|p| p.get_bind(name).map(|(addr, depth)| (addr, depth + 1)))
+            },
+            |addr| Some((addr.clone(), 0)),
+        )
     }
 
     fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
         let mut binds = Vec::new();
         for bind in v.definitions.iter() {
             let id = self.bind_cnt;
-            self.env.insert(bind.0.clone(), id);
+            self.env.insert(bind.0.clone(), Identifier::Bind(id));
 
             self.bind_cnt += 1;
             binds.push((id, &bind.1));
@@ -177,18 +186,8 @@ impl<'a> Translator<'a> {
 
                 let mut body_cmd = Vec::new();
                 for (i, arg) in args.iter().enumerate() {
-                    let id = translator.bind_cnt;
-                    translator.env.insert(arg.clone(), id);
-                    translator.bind_cnt += 1;
-
+                    translator.env.insert(arg.clone(), Identifier::Arg(i));
                     body_cmd.push(Cmd::Store);
-                    body_cmd.push(Cmd::ProgramCounter);
-                    body_cmd.push(Cmd::NumberConst(5_f64));
-                    body_cmd.push(Cmd::Add);
-                    body_cmd.push(Cmd::Label(id));
-                    body_cmd.push(Cmd::JumpRel(3));
-                    body_cmd.push(Cmd::Load(i));
-                    body_cmd.push(Cmd::Return);
                 }
 
                 body_cmd.append(&mut translator.translate_expression(body));
@@ -218,10 +217,17 @@ impl<'a> Translator<'a> {
 
     fn translate_identifier(&self, name: &str) -> Vec<Cmd> {
         let id = self.get_bind(name).unwrap();
-
         let mut cmd = Vec::new();
-        cmd.push(Cmd::LabelAddr(id));
-        cmd.push(Cmd::Call);
+
+        match id {
+            (Identifier::Bind(id), _) => {
+                cmd.push(Cmd::LabelAddr(id));
+                cmd.push(Cmd::Call);
+            }
+            (Identifier::Arg(id), depth) => {
+                cmd.push(Cmd::Load(id, depth));
+            }
+        };
         cmd
     }
 }

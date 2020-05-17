@@ -42,9 +42,8 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
     let mut stack: Vec<Value> = Vec::new();
     let mut call_stack: Vec<CallEnv> = Vec::new();
     while program.len() > i {
+        // dbg!(i, program[i].clone(), stack.clone(), call_stack.clone());
         use Cmd::*;
-        dbg!(i, program[i].clone(), stack.clone(), call_stack.clone());
-        println!();
         match program[i] {
             Add => {
                 let r = stack.pop().unwrap().into_number()?;
@@ -116,9 +115,9 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             Store => {
                 call_stack.last_mut().unwrap().1 -= 1;
             }
-            Load(i) => {
-                let (_, base_counter) = call_stack.last().unwrap();
-                let v = stack.get(base_counter + i - 1).unwrap().clone();
+            Load(i, depth) => {
+                let (_, base_counter) = call_stack.get(call_stack.len() - 1 - depth).unwrap();
+                let v = stack.get(base_counter + i).unwrap().clone();
                 stack.push(v);
             }
             FunctionAddr => {
@@ -136,5 +135,5 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
 
         i += 1;
     }
-    Ok(format!("{:?}", stack.pop().unwrap()))
+    Ok(format!("{:?}", stack))
 }
