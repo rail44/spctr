@@ -29,20 +29,22 @@ impl Value {
     fn into_function_addr(self) -> Result<usize> {
         match self {
             Value::Function(addr) => Ok(addr),
-            _ => Err(anyhow!("not bool")),
+            _ => Err(anyhow!("{:?} is not function", self)),
         }
     }
 }
+
+type CallEnv = (usize, usize);
 
 pub fn run(program: Vec<Cmd>) -> Result<String> {
     let mut i: usize = 0;
     let mut label_map: HashMap<usize, usize> = HashMap::new();
     let mut stack: Vec<Value> = Vec::new();
-    let mut args: Vec<Vec<Value>> = vec!(Vec::new());
+    let mut call_stack: Vec<CallEnv> = Vec::new();
     while program.len() > i {
         use Cmd::*;
-        dbg!(stack.clone());
-        dbg!(program[i].clone());
+        dbg!(i, program[i].clone(), stack.clone(), call_stack.clone());
+        println!();
         match program[i] {
             Add => {
                 let r = stack.pop().unwrap().into_number()?;
@@ -80,14 +82,13 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             StringConst(ref s) => {
                 stack.push(Value::String(s.clone()));
             }
-            LabelCounter(id) => {
+            Label(id) => {
                 let cnt = stack.pop().unwrap().into_number()?;
                 label_map.insert(id, cnt as usize);
             }
-            JumpToLabel(id) => {
+            LabelAddr(id) => {
                 let cnt = label_map.get(&id).unwrap();
-                i = *cnt as usize;
-                continue;
+                stack.push(Value::Function(*cnt));
             }
             ProgramCounter => {
                 stack.push(Value::Number(i as f64));
@@ -105,25 +106,20 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             }
             Return => {
                 let ret = stack.pop().unwrap();
-                let addr = stack.pop().unwrap();
+                let (ret_addr, base_counter) = call_stack.pop().unwrap();
+
+                stack.truncate(base_counter);
                 stack.push(ret);
-                i = addr.into_number()? as usize;
+                i = ret_addr;
                 continue;
             },
-            FunctionReturn => {
-                let ret = stack.pop().unwrap();
-                let addr = stack.pop().unwrap();
-                stack.push(ret);
-                args.pop();
-                i = addr.into_number()? as usize;
-                continue;
-            },
-            Load(i) => {
-                stack.push(args.last_mut().unwrap().get(i).unwrap().clone());
-            }
             Store => {
-                let value = stack.pop().unwrap();
-                args.last_mut().unwrap().push(value);
+                call_stack.last_mut().unwrap().1 -= 1;
+            }
+            Load(i) => {
+                let (_, base_counter) = call_stack.last().unwrap();
+                let v = stack.get(base_counter + i -1).unwrap().clone();
+                stack.push(v);
             }
             FunctionAddr => {
                 let addr = stack.pop().unwrap().into_number()?;
@@ -131,8 +127,9 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             }
             Call => {
                 let addr = stack.pop().unwrap().into_function_addr()?;
+                let ret_addr = i + 1;
                 i = addr;
-                args.push(Vec::new());
+                call_stack.push((ret_addr, stack.len()));
                 continue;
             }
         }

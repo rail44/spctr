@@ -10,18 +10,17 @@ pub enum Cmd {
     Mul,
     Equal,
     NotEqual,
-    FunctionReturn,
     Return,
     Load(usize),
-    Store,
     NumberConst(f64),
     StringConst(Rc<String>),
     FunctionAddr,
-    LabelCounter(usize),
-    JumpToLabel(usize),
+    Label(usize),
+    LabelAddr(usize),
     JumpRel(usize),
     JumpRelIf(usize),
     ProgramCounter,
+    Store,
     Call,
 }
 
@@ -78,7 +77,7 @@ impl<'a> Translator<'a> {
             cmd.push(Cmd::ProgramCounter);
             cmd.push(Cmd::NumberConst(5_f64));
             cmd.push(Cmd::Add);
-            cmd.push(Cmd::LabelCounter(id));
+            cmd.push(Cmd::Label(id));
             cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
             cmd.append(&mut body_cmd);
         }
@@ -166,16 +165,7 @@ impl<'a> Translator<'a> {
         match v {
             Primary::Number(v) => vec![Cmd::NumberConst(*v)],
             Primary::String(s) => vec![Cmd::StringConst(Rc::new(s.clone()))],
-            Primary::Identifier(name) => {
-                let id = self.get_bind(name).unwrap();
-
-                let mut cmd = Vec::new();
-                cmd.push(Cmd::ProgramCounter);
-                cmd.push(Cmd::NumberConst(4_f64));
-                cmd.push(Cmd::Add);
-                cmd.push(Cmd::JumpToLabel(id));
-                cmd
-            }
+            Primary::Identifier(name) => self.translate_identifier(name),
             Primary::Block(statement) => {
                 let mut translator = self.fork();
                 translator.translate(statement)
@@ -195,13 +185,14 @@ impl<'a> Translator<'a> {
                     body_cmd.push(Cmd::ProgramCounter);
                     body_cmd.push(Cmd::NumberConst(5_f64));
                     body_cmd.push(Cmd::Add);
-                    body_cmd.push(Cmd::LabelCounter(id));
+                    body_cmd.push(Cmd::Label(id));
                     body_cmd.push(Cmd::JumpRel(3));
                     body_cmd.push(Cmd::Load(i));
                     body_cmd.push(Cmd::Return);
                 }
+
                 body_cmd.append(&mut translator.translate_expression(body));
-                body_cmd.push(Cmd::FunctionReturn);
+                body_cmd.push(Cmd::Return);
 
                 let mut cmd = Vec::new();
                 cmd.push(Cmd::ProgramCounter);
@@ -213,26 +204,24 @@ impl<'a> Translator<'a> {
                 cmd
             }
             Primary::Call(name, args) => {
-                let mut arg_cmd = Vec::new();
-                for arg in args {
-                    arg_cmd.append(&mut self.translate_expression(arg));
-                }
-
-                let id = self.get_bind(name).unwrap();
-
                 let mut cmd = Vec::new();
-
-                cmd.push(Cmd::ProgramCounter);
-                cmd.push(Cmd::NumberConst((arg_cmd.len() + 8) as f64));
-                cmd.push(Cmd::Add);
-                cmd.append(&mut arg_cmd);
-                cmd.push(Cmd::ProgramCounter);
-                cmd.push(Cmd::NumberConst(4_f64));
-                cmd.push(Cmd::Add);
-                cmd.push(Cmd::JumpToLabel(id));
+                for arg in args {
+                    cmd.append(&mut self.translate_expression(arg));
+                }
+                let mut identifier_cmd = self.translate_identifier(name);
+                cmd.append(&mut identifier_cmd);
                 cmd.push(Cmd::Call);
                 cmd
             }
         }
+    }
+    
+    fn translate_identifier(&self, name: &str) -> Vec<Cmd> {
+        let id = self.get_bind(name).unwrap();
+
+        let mut cmd = Vec::new();
+        cmd.push(Cmd::LabelAddr(id));
+        cmd.push(Cmd::Call);
+        cmd
     }
 }
