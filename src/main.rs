@@ -1,10 +1,10 @@
 mod parser;
-mod token;
 mod stack;
+mod token;
 mod vm;
 
-use clap::{App, Arg};
 use anyhow::{anyhow, Result};
+use clap::{App, Arg};
 
 use std::fs;
 
@@ -16,25 +16,24 @@ fn main() -> Result<()> {
         .get_matches();
 
     let input = match matches.value_of("input") {
-        Some(v) => {
-            v.to_string()
-        }
+        Some(v) => v.to_string(),
         None => {
             let path = matches.value_of("FILE").unwrap();
             fs::read_to_string(path)?
         }
     };
 
-    eval(&input);
-    Ok(())
+    eval(&input)
 }
 
 fn eval(input: &str) -> Result<()> {
-    let token = dbg!(parser::parse(&input)
-        .map_err(|s| anyhow!("Parsing failed!, {}", s))?
-        .1);
+    let token = dbg!(
+        parser::parse(&input)
+            .map_err(|s| anyhow!("Parsing failed!, {}", s))?
+            .1
+    );
     let stack = dbg!(stack::get_cmd(&token));
-    let result = vm::run(stack);
+    let result = vm::run(stack)?;
     dbg!(result);
     Ok(())
 }

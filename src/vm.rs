@@ -1,6 +1,6 @@
 use crate::stack::Cmd;
-use std::collections::HashMap;
 use anyhow::{anyhow, Result};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -17,7 +17,7 @@ impl Value {
             _ => Err(anyhow!("not number")),
         }
     }
-    
+
     fn into_bool(self) -> Result<bool> {
         match self {
             Value::Bool(b) => Ok(b),
@@ -75,11 +75,11 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             }
             JumpToLabel(id) => {
                 let cnt = label_map.get(&id).unwrap();
-                i = cnt.clone() as usize;
+                i = *cnt as usize;
                 continue;
             }
             ProgramCounter => {
-                stack.push(Value::Number(i.clone() as f64));
+                stack.push(Value::Number(i as f64));
             }
             JumpRel(n) => {
                 i += n;

@@ -28,7 +28,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
 struct Translator<'a> {
     env: HashMap<String, usize>,
     bind_cnt: usize,
-    parent: Option<&'a Translator<'a>>
+    parent: Option<&'a Translator<'a>>,
 }
 
 impl<'a> Translator<'a> {
@@ -49,16 +49,17 @@ impl<'a> Translator<'a> {
     }
 
     fn get_bind(&self, name: &str) -> Option<usize> {
-        self.env.get(name).cloned().or_else(|| {
-            self.parent.and_then(|p| p.get_bind(name))
-        })
+        self.env
+            .get(name)
+            .cloned()
+            .or_else(|| self.parent.and_then(|p| p.get_bind(name)))
     }
-    
+
     fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
         let mut binds = Vec::new();
         for bind in v.definitions.iter() {
-            let id = self.bind_cnt.clone();
-            self.env.insert(bind.0.clone(), id.clone());
+            let id = self.bind_cnt;
+            self.env.insert(bind.0.clone(), id);
 
             self.bind_cnt += 1;
             binds.push((id, &bind.1));
@@ -70,7 +71,7 @@ impl<'a> Translator<'a> {
             body_cmd.push(Cmd::Return);
 
             cmd.push(Cmd::ProgramCounter);
-            cmd.push(Cmd::NumberConst(5 as f64));
+            cmd.push(Cmd::NumberConst(5_f64));
             cmd.push(Cmd::Add);
             cmd.push(Cmd::LabelCounter(id));
             cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
@@ -158,26 +159,21 @@ impl<'a> Translator<'a> {
 
     fn translate_primary(&mut self, v: &Primary) -> Vec<Cmd> {
         match v {
-            Primary::Number(v) => {
-                vec![Cmd::NumberConst(v.clone())]
-            }
-            Primary::String(s) => {
-                vec![Cmd::StringConst(Rc::new(s.clone()))]
-            }
+            Primary::Number(v) => vec![Cmd::NumberConst(*v)],
+            Primary::String(s) => vec![Cmd::StringConst(Rc::new(s.clone()))],
             Primary::Identifier(name) => {
                 let id = self.get_bind(name).unwrap();
 
                 let mut cmd = Vec::new();
                 cmd.push(Cmd::ProgramCounter);
-                cmd.push(Cmd::NumberConst(4 as f64));
+                cmd.push(Cmd::NumberConst(4_f64));
                 cmd.push(Cmd::Add);
-                cmd.push(Cmd::JumpToLabel(id.clone()));
+                cmd.push(Cmd::JumpToLabel(id));
                 cmd
             }
             Primary::Block(statement) => {
                 let mut translator = self.fork();
-                let cmd = translator.translate(statement);
-                cmd
+                translator.translate(statement)
             }
         }
     }

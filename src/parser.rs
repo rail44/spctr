@@ -1,7 +1,7 @@
 use crate::token::*;
 use nom::{
     branch::alt,
-    bytes::complete::{take_until, tag},
+    bytes::complete::{tag, take_until},
     character::complete::{alpha1, char, digit1, space0},
     combinator::{all_consuming, map, opt},
     multi::{fold_many0, separated_list},
