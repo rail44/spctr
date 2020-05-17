@@ -66,10 +66,15 @@ fn string(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::String(s.to_string())))
 }
 
+fn struct_(input: &str) -> IResult<&str, Primary> {
+    let (input, s) = delimited(char('{'), definitions, char('}'))(input)?;
+    Ok((input, Primary::Struct(s)))
+}
+
 fn primary(input: &str) -> IResult<&str, Primary> {
     delimited(
         space0,
-        alt((number, string, call, identifier, block, function)),
+        alt((number, string, call, identifier, block, function, struct_)),
         space0,
     )(input)
 }

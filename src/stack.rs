@@ -181,9 +181,6 @@ impl<'a> Translator<'a> {
             }
             Primary::Function(args, body) => {
                 let mut translator = self.fork();
-                let mut args = args.clone();
-                args.reverse();
-
                 let mut body_cmd = Vec::new();
                 for (i, arg) in args.iter().enumerate() {
                     translator.env.insert(arg.clone(), Identifier::Arg(i));
@@ -211,6 +208,9 @@ impl<'a> Translator<'a> {
                 cmd.append(&mut identifier_cmd);
                 cmd.push(Cmd::Call);
                 cmd
+            }
+            Primary::Struct(definitions) => {
+                unimplemented!();
             }
         }
     }

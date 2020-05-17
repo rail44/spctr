@@ -31,11 +31,6 @@ pub enum ComparisonRight {
 }
 
 #[derive(Clone, Debug)]
-pub struct Struct {
-    pub definitions: Vec<Bind>,
-}
-
-#[derive(Clone, Debug)]
 pub struct Additive {
     pub left: Multitive,
     pub rights: Vec<AdditiveRight>,
@@ -67,5 +62,5 @@ pub enum Primary {
     Call(String, Vec<Expression>),
     Block(Box<Statement>),
     Function(Vec<String>, Box<Expression>),
-    // Struct(Struct),
+    Struct(Vec<Bind>),
 }
