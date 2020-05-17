@@ -25,6 +25,13 @@ impl Value {
             _ => Err(anyhow!("not bool")),
         }
     }
+
+    fn into_function_addr(self) -> Result<usize> {
+        match self {
+            Value::Function(addr) => Ok(addr),
+            _ => Err(anyhow!("not bool")),
+        }
+    }
 }
 
 pub fn run(program: Vec<Cmd>) -> Result<String> {
@@ -34,6 +41,8 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
     let mut args: Vec<Vec<Value>> = vec!(Vec::new());
     while program.len() > i {
         use Cmd::*;
+        dbg!(stack.clone());
+        dbg!(program[i].clone());
         match program[i] {
             Add => {
                 let r = stack.pop().unwrap().into_number()?;
@@ -94,13 +103,18 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                     continue;
                 }
             }
-            Return(arg_count) => {
+            Return => {
                 let ret = stack.pop().unwrap();
-                for _ in 0..arg_count {
-                    stack.pop();
-                }
                 let addr = stack.pop().unwrap();
                 stack.push(ret);
+                i = addr.into_number()? as usize;
+                continue;
+            },
+            FunctionReturn => {
+                let ret = stack.pop().unwrap();
+                let addr = stack.pop().unwrap();
+                stack.push(ret);
+                args.pop();
                 i = addr.into_number()? as usize;
                 continue;
             },
@@ -114,6 +128,12 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             FunctionAddr => {
                 let addr = stack.pop().unwrap().into_number()?;
                 stack.push(Value::Function(addr as usize));
+            }
+            Call => {
+                let addr = stack.pop().unwrap().into_function_addr()?;
+                i = addr;
+                args.push(Vec::new());
+                continue;
             }
         }
 

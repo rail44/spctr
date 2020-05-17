@@ -10,7 +10,8 @@ pub enum Cmd {
     Mul,
     Equal,
     NotEqual,
-    Return(usize),
+    FunctionReturn,
+    Return,
     Load(usize),
     Store,
     NumberConst(f64),
@@ -21,6 +22,7 @@ pub enum Cmd {
     JumpRel(usize),
     JumpRelIf(usize),
     ProgramCounter,
+    Call,
 }
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
@@ -71,7 +73,7 @@ impl<'a> Translator<'a> {
         let mut cmd = Vec::new();
         for (id, body) in binds {
             let mut body_cmd = self.translate_expression(&body);
-            body_cmd.push(Cmd::Return(0));
+            body_cmd.push(Cmd::Return);
 
             cmd.push(Cmd::ProgramCounter);
             cmd.push(Cmd::NumberConst(5_f64));
@@ -196,10 +198,10 @@ impl<'a> Translator<'a> {
                     body_cmd.push(Cmd::LabelCounter(id));
                     body_cmd.push(Cmd::JumpRel(3));
                     body_cmd.push(Cmd::Load(i));
-                    body_cmd.push(Cmd::Return(0));
+                    body_cmd.push(Cmd::Return);
                 }
                 body_cmd.append(&mut translator.translate_expression(body));
-                body_cmd.push(Cmd::Return(args.len()));
+                body_cmd.push(Cmd::FunctionReturn);
 
                 let mut cmd = Vec::new();
                 cmd.push(Cmd::ProgramCounter);
@@ -211,7 +213,25 @@ impl<'a> Translator<'a> {
                 cmd
             }
             Primary::Call(name, args) => {
-                unimplemented!();
+                let mut arg_cmd = Vec::new();
+                for arg in args {
+                    arg_cmd.append(&mut self.translate_expression(arg));
+                }
+
+                let id = self.get_bind(name).unwrap();
+
+                let mut cmd = Vec::new();
+
+                cmd.push(Cmd::ProgramCounter);
+                cmd.push(Cmd::NumberConst((arg_cmd.len() + 8) as f64));
+                cmd.push(Cmd::Add);
+                cmd.append(&mut arg_cmd);
+                cmd.push(Cmd::ProgramCounter);
+                cmd.push(Cmd::NumberConst(4_f64));
+                cmd.push(Cmd::Add);
+                cmd.push(Cmd::JumpToLabel(id));
+                cmd.push(Cmd::Call);
+                cmd
             }
         }
     }
