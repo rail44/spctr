@@ -27,10 +27,9 @@ fn identifier(input: &str) -> IResult<&str, Primary> {
 }
 
 fn call(input: &str) -> IResult<&str, Primary> {
-    map(
-        pair(alpha1, call_args),
-        |(name, args)| Primary::Call(name.to_string(), args)
-    )(input)
+    map(pair(alpha1, call_args), |(name, args)| {
+        Primary::Call(name.to_string(), args)
+    })(input)
 }
 
 fn block(input: &str) -> IResult<&str, Primary> {
@@ -48,7 +47,11 @@ fn call_args(input: &str) -> IResult<&str, Vec<Expression>> {
 
 fn args(input: &str) -> IResult<&str, Vec<String>> {
     map(
-        delimited(char('('), separated_list(char(','), delimited(space0, alpha1, space0)), char(')')),
+        delimited(
+            char('('),
+            separated_list(char(','), delimited(space0, alpha1, space0)),
+            char(')'),
+        ),
         |args: Vec<&str>| args.into_iter().map(|s| s.to_string()).collect(),
     )(input)
 }

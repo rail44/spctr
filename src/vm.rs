@@ -112,13 +112,13 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 stack.push(ret);
                 i = ret_addr;
                 continue;
-            },
+            }
             Store => {
                 call_stack.last_mut().unwrap().1 -= 1;
             }
             Load(i) => {
                 let (_, base_counter) = call_stack.last().unwrap();
-                let v = stack.get(base_counter + i -1).unwrap().clone();
+                let v = stack.get(base_counter + i - 1).unwrap().clone();
                 stack.push(v);
             }
             FunctionAddr => {

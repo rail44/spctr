@@ -215,7 +215,7 @@ impl<'a> Translator<'a> {
             }
         }
     }
-    
+
     fn translate_identifier(&self, name: &str) -> Vec<Cmd> {
         let id = self.get_bind(name).unwrap();
 
