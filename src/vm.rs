@@ -1,14 +1,15 @@
-use crate::stack::Cmd;
+use crate::stack::{Cmd, Identifier};
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 enum Value {
     Number(f64),
     Bool(bool),
     String(Rc<String>),
     Function(usize),
+    Struct(usize, Rc<HashMap<String, Identifier>>),
 }
 
 impl Value {
@@ -66,13 +67,13 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 stack.push(Value::Number(l / r));
             }
             Equal => {
-                let r = stack.pop().unwrap();
-                let l = stack.pop().unwrap();
+                let r = stack.pop().unwrap().into_number()?;
+                let l = stack.pop().unwrap().into_number()?;
                 stack.push(Value::Bool(l == r));
             }
             NotEqual => {
-                let r = stack.pop().unwrap();
-                let l = stack.pop().unwrap();
+                let r = stack.pop().unwrap().into_number()?;
+                let l = stack.pop().unwrap().into_number()?;
                 stack.push(Value::Bool(l != r));
             }
             NumberConst(n) => {
@@ -123,6 +124,10 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             FunctionAddr => {
                 let addr = stack.pop().unwrap().into_number()?;
                 stack.push(Value::Function(addr as usize));
+            }
+            StructAddr(ref map) => {
+                let addr = stack.pop().unwrap().into_number()?;
+                stack.push(Value::Struct(addr as usize, map.clone()));
             }
             Call => {
                 let addr = stack.pop().unwrap().into_function_addr()?;

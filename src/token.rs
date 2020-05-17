@@ -44,14 +44,20 @@ pub enum AdditiveRight {
 
 #[derive(Clone, Debug)]
 pub struct Multitive {
-    pub left: Primary,
+    pub left: Access,
     pub rights: Vec<MultitiveRight>,
 }
 
 #[derive(Clone, Debug)]
 pub enum MultitiveRight {
-    Mul(Primary),
-    Div(Primary),
+    Mul(Access),
+    Div(Access),
+}
+
+#[derive(Clone, Debug)]
+pub struct Access {
+    pub left: Primary,
+    pub rights: Vec<String>,
 }
 
 #[derive(Clone, Debug)]

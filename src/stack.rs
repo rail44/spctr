@@ -15,6 +15,7 @@ pub enum Cmd {
     NumberConst(f64),
     StringConst(Rc<String>),
     FunctionAddr,
+    StructAddr(Rc<HashMap<String, Identifier>>),
     Label(usize),
     LabelAddr(usize),
     JumpRel(usize),
@@ -25,7 +26,7 @@ pub enum Cmd {
 }
 
 #[derive(Clone, Debug)]
-enum Identifier {
+pub enum Identifier {
     Bind(usize),
     Arg(usize),
 }
@@ -154,19 +155,24 @@ impl<'a> Translator<'a> {
     }
 
     fn translate_multitive(&mut self, v: &Multitive) -> Vec<Cmd> {
-        let mut cmd = self.translate_primary(&v.left);
+        let mut cmd = self.translate_access(&v.left);
         for right in &v.rights {
             match right {
                 MultitiveRight::Mul(r) => {
-                    cmd.append(&mut self.translate_primary(&r));
+                    cmd.append(&mut self.translate_access(&r));
                     cmd.push(Cmd::Mul);
                 }
                 MultitiveRight::Div(r) => {
-                    cmd.append(&mut self.translate_primary(&r));
+                    cmd.append(&mut self.translate_access(&r));
                     cmd.push(Cmd::Div);
                 }
             }
         }
+        cmd
+    }
+
+    fn translate_access(&mut self, v: &Access) -> Vec<Cmd> {
+        let mut cmd = self.translate_primary(&v.left);
         cmd
     }
 
@@ -210,7 +216,37 @@ impl<'a> Translator<'a> {
                 cmd
             }
             Primary::Struct(definitions) => {
-                unimplemented!();
+                let mut translator = self.fork();
+                let mut binds = Vec::new();
+                for bind in definitions {
+                    let id = translator.bind_cnt;
+                    translator.env.insert(bind.0.clone(), Identifier::Bind(id));
+
+                    translator.bind_cnt += 1;
+                    binds.push((id, &bind.1));
+                }
+
+                let mut def_cmd = Vec::new();
+                for (id, body) in binds {
+                    let mut body_cmd = translator.translate_expression(&body);
+
+                    def_cmd.push(Cmd::ProgramCounter);
+                    def_cmd.push(Cmd::NumberConst(5_f64));
+                    def_cmd.push(Cmd::Add);
+                    def_cmd.push(Cmd::Label(id));
+                    def_cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
+                    def_cmd.append(&mut body_cmd);
+                }
+
+                let mut cmd = Vec::new();
+                cmd.push(Cmd::ProgramCounter);
+                cmd.push(Cmd::NumberConst(5_f64));
+                cmd.push(Cmd::Add);
+                cmd.push(Cmd::StructAddr(Rc::new(translator.env)));
+                cmd.push(Cmd::JumpRel(def_cmd.len() + 1));
+                cmd.append(&mut def_cmd);
+
+                cmd
             }
         }
     }

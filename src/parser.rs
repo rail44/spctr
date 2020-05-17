@@ -79,10 +79,20 @@ fn primary(input: &str) -> IResult<&str, Primary> {
     )(input)
 }
 
+fn access(input: &str) -> IResult<&str, Access> {
+    map(
+        tuple((primary, opt(char('.')), separated_list(char('.'), alpha1))),
+        |(left, _, rights)| Access {
+            left,
+            rights: rights.into_iter().map(|s| s.to_string()).collect(),
+        },
+    )(input)
+}
+
 fn multitive(input: &str) -> IResult<&str, Multitive> {
-    let (input, left) = primary(input)?;
+    let (input, left) = access(input)?;
     let (input, rights) = fold_many0(
-        pair(alt((char('*'), char('/'))), primary),
+        pair(alt((char('*'), char('/'))), access),
         Vec::new(),
         |mut vec, (op, val)| {
             match op {
