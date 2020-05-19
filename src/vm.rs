@@ -8,7 +8,7 @@ enum Value {
     Number(f64),
     Bool(bool),
     String(Rc<String>),
-    Function(usize),
+    Function(usize, CallStack),
     Struct(usize, Rc<HashMap<String, Identifier>>),
 }
 
@@ -27,23 +27,50 @@ impl Value {
         }
     }
 
-    fn into_function_addr(self) -> Result<usize> {
+    fn into_function(self) -> Result<(usize, CallStack)> {
         match self {
-            Value::Function(addr) => Ok(addr),
+            Value::Function(addr, call_stack) => Ok((addr, call_stack)),
             _ => Err(anyhow!("{:?} is not function", self)),
         }
     }
 }
 
-type CallEnv = (usize, usize);
+
+#[derive(Clone, Debug)]
+struct CallStack(Option<Rc<(StackFrame, CallStack)>>);
+
+type StackFrame = (usize, CallStack, Vec<Value>);
+
+impl CallStack {
+    fn push(&mut self, env: StackFrame) {
+        let this = CallStack(self.0.take());
+        self.0 = Some(Rc::new((env, this)));
+    }
+
+    fn pop(&mut self) -> StackFrame {
+        let this = CallStack(self.0.take());
+        let rc = this.0.unwrap();
+        let (head, tail) = Rc::try_unwrap(rc).unwrap_or_else(|rc| (*rc).clone());
+        *self = tail;
+        head
+    }
+
+    fn parent_nth(&self, n: usize) -> &StackFrame {
+        let rc = self.0.as_ref().unwrap();
+        if n == 0 {
+            return &rc.0;
+        }
+        rc.1.parent_nth(n - 1)
+    }
+}
 
 pub fn run(program: Vec<Cmd>) -> Result<String> {
     let mut i: usize = 0;
     let mut label_map: HashMap<usize, usize> = HashMap::new();
     let mut stack: Vec<Value> = Vec::new();
-    let mut call_stack: Vec<CallEnv> = Vec::new();
+    let mut call_stack: CallStack = CallStack(None);
     while program.len() > i {
-        // dbg!(i, program[i].clone(), stack.clone(), call_stack.clone());
+        dbg!(i, program[i].clone(), stack.clone(), call_stack.clone());
         use Cmd::*;
         match program[i] {
             Add => {
@@ -88,7 +115,7 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             }
             LabelAddr(id) => {
                 let cnt = label_map.get(&id).unwrap();
-                stack.push(Value::Function(*cnt));
+                stack.push(Value::Function(*cnt, call_stack.clone()));
             }
             ProgramCounter => {
                 stack.push(Value::Number(i as f64));
@@ -105,35 +132,39 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 }
             }
             Return => {
-                let ret = stack.pop().unwrap();
-                let (ret_addr, base_counter) = call_stack.pop().unwrap();
-
-                stack.truncate(base_counter);
-                stack.push(ret);
+                let (ret_addr, ret_frame, _) = call_stack.pop();
+                call_stack = ret_frame;
                 i = ret_addr;
                 continue;
             }
             Store => {
-                call_stack.last_mut().unwrap().1 -= 1;
             }
             Load(i, depth) => {
-                let (_, base_counter) = call_stack.get(call_stack.len() - 1 - depth).unwrap();
-                let v = stack.get(base_counter + i).unwrap().clone();
+                let (_, _, args) = call_stack.parent_nth(depth);
+                let v = args.get(i).unwrap().clone();
                 stack.push(v);
             }
             FunctionAddr => {
                 let addr = stack.pop().unwrap().into_number()?;
-                stack.push(Value::Function(addr as usize));
+                stack.push(Value::Function(addr as usize, call_stack.clone()));
             }
             StructAddr(ref map) => {
                 let addr = stack.pop().unwrap().into_number()?;
                 stack.push(Value::Struct(addr as usize, map.clone()));
             }
-            Call => {
-                let addr = stack.pop().unwrap().into_function_addr()?;
+            Call(arg_len) => {
+                let (addr, closure_call_stack) = stack.pop().unwrap().into_function()?;
                 let ret_addr = i + 1;
+                let ret_frame = call_stack;
+                let mut args = Vec::new();
+                for _ in 0..arg_len {
+                    args.push(stack.pop().unwrap());
+                }
+
+                call_stack = closure_call_stack;
+                call_stack.push((ret_addr, ret_frame, args));
+
                 i = addr;
-                call_stack.push((ret_addr, stack.len()));
                 continue;
             }
         }

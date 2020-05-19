@@ -22,7 +22,7 @@ pub enum Cmd {
     JumpRelIf(usize),
     ProgramCounter,
     Store,
-    Call,
+    Call(usize),
 }
 
 #[derive(Clone, Debug)]
@@ -172,7 +172,7 @@ impl<'a> Translator<'a> {
     }
 
     fn translate_access(&mut self, v: &Access) -> Vec<Cmd> {
-        let mut cmd = self.translate_primary(&v.left);
+        let cmd = self.translate_primary(&v.left);
         cmd
     }
 
@@ -212,7 +212,7 @@ impl<'a> Translator<'a> {
                 }
                 let mut identifier_cmd = self.translate_identifier(name);
                 cmd.append(&mut identifier_cmd);
-                cmd.push(Cmd::Call);
+                cmd.push(Cmd::Call(args.len()));
                 cmd
             }
             Primary::Struct(definitions) => {
@@ -258,7 +258,7 @@ impl<'a> Translator<'a> {
         match id {
             (Identifier::Bind(id), _) => {
                 cmd.push(Cmd::LabelAddr(id));
-                cmd.push(Cmd::Call);
+                cmd.push(Cmd::Call(0));
             }
             (Identifier::Arg(id), depth) => {
                 cmd.push(Cmd::Load(id, depth));
