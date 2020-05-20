@@ -22,7 +22,7 @@ pub enum Cmd {
     JumpRel(usize),
     JumpRelIf(usize),
     Call(usize),
-    Access
+    Access,
 }
 
 #[derive(Clone, Debug)]

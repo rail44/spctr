@@ -63,7 +63,7 @@ pub struct Operation {
 #[derive(Clone, Debug)]
 pub enum OperationRight {
     Access(String),
-    Call(Vec<Expression>)
+    Call(Vec<Expression>),
 }
 
 #[derive(Clone, Debug)]

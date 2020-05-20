@@ -5,7 +5,7 @@ use nom::{
     character::complete::{alpha1, char, digit1, space0},
     combinator::{all_consuming, map, opt},
     multi::{fold_many0, many0, separated_list},
-    sequence::{delimited, pair, preceded, separated_pair, tuple, terminated},
+    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
     IResult,
 };
 use std::str::FromStr;
@@ -38,7 +38,7 @@ fn arrow(input: &str) -> IResult<&str, &str> {
 fn call(input: &str) -> IResult<&str, OperationRight> {
     map(
         delimited(char('('), separated_list(char(','), expression), char(')')),
-        |args| OperationRight::Call(args)
+        |args| OperationRight::Call(args),
     )(input)
 }
 
@@ -71,7 +71,7 @@ fn struct_(input: &str) -> IResult<&str, Primary> {
 fn array(input: &str) -> IResult<&str, Primary> {
     map(
         delimited(char('['), separated_list(char(','), expression), char(']')),
-        |items| Primary::Array(items)
+        |items| Primary::Array(items),
     )(input)
 }
 
@@ -80,10 +80,9 @@ fn primary(input: &str) -> IResult<&str, Primary> {
 }
 
 fn access(input: &str) -> IResult<&str, OperationRight> {
-    map(
-        preceded(char('.'), alpha1),
-        |prop: &str| OperationRight::Access(prop.to_string())
-    )(input)
+    map(preceded(char('.'), alpha1), |prop: &str| {
+        OperationRight::Access(prop.to_string())
+    })(input)
 }
 
 fn operation(input: &str) -> IResult<&str, Operation> {

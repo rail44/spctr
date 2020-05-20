@@ -50,7 +50,6 @@ impl Value {
     }
 }
 
-
 #[derive(Clone, Debug)]
 struct CallStack(Option<Rc<(StackFrame, CallStack)>>);
 
