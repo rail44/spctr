@@ -5,7 +5,7 @@ use nom::{
     character::complete::{alpha1, char, digit1, space0},
     combinator::{all_consuming, map, opt},
     multi::{fold_many0, many0, separated_list},
-    sequence::{delimited, pair, preceded, separated_pair, tuple},
+    sequence::{delimited, pair, preceded, separated_pair, tuple, terminated},
     IResult,
 };
 use std::str::FromStr;
@@ -69,11 +69,7 @@ fn struct_(input: &str) -> IResult<&str, Primary> {
 }
 
 fn primary(input: &str) -> IResult<&str, Primary> {
-    delimited(
-        space0,
-        alt((number, string, identifier, block, function, struct_)),
-        space0,
-    )(input)
+    alt((number, string, identifier, block, function, struct_))(input)
 }
 
 fn access(input: &str) -> IResult<&str, OperationRight> {
@@ -84,8 +80,8 @@ fn access(input: &str) -> IResult<&str, OperationRight> {
 }
 
 fn operation(input: &str) -> IResult<&str, Operation> {
-    let (input, left) = primary(input)?;
-    let (input, rights) = many0(alt((access, call)))(input)?;
+    let (input, left) = preceded(space0, primary)(input)?;
+    let (input, rights) = terminated(many0(alt((access, call))), space0)(input)?;
     Ok((input, Operation { left, rights }))
 }
 

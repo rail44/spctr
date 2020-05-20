@@ -30,7 +30,7 @@ fn eval(input: &str) -> Result<()> {
     let token = parser::parse(&input)
         .map_err(|s| anyhow!("Parsing failed!, {}", s))?
         .1;
-    let stack = stack::get_cmd(&token);
+    let stack = dbg!(stack::get_cmd(&token));
     let result = vm::run(stack)?;
     dbg!(result);
     Ok(())

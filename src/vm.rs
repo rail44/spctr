@@ -1,4 +1,4 @@
-use crate::stack::{Cmd, Identifier};
+use crate::stack::Cmd;
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -9,7 +9,7 @@ enum Value {
     Bool(bool),
     String(Rc<String>),
     Function(usize, CallStack),
-    Struct(usize, Rc<HashMap<String, Identifier>>),
+    Struct(Rc<HashMap<String, usize>>),
 }
 
 impl Value {
@@ -31,6 +31,20 @@ impl Value {
         match self {
             Value::Function(addr, call_stack) => Ok((addr, call_stack)),
             _ => Err(anyhow!("{:?} is not function", self)),
+        }
+    }
+
+    fn into_string(self) -> Result<Rc<String>> {
+        match self {
+            Value::String(s) => Ok(s),
+            _ => Err(anyhow!("{:?} is not string", self)),
+        }
+    }
+
+    fn into_struct(self) -> Result<Rc<HashMap<String, usize>>> {
+        match self {
+            Value::Struct(map) => Ok(map),
+            _ => Err(anyhow!("{:?} is not struct", self)),
         }
     }
 }
@@ -71,6 +85,8 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
     let mut call_stack: CallStack = CallStack(None);
     while program.len() > i {
         use Cmd::*;
+        dbg!(i, program[i].clone(), stack.clone(), call_stack.clone());
+        println!();
         match program[i] {
             Add => {
                 let r = stack.pop().unwrap().into_number()?;
@@ -136,8 +152,6 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 i = ret_addr;
                 continue;
             }
-            Store => {
-            }
             Load(i, depth) => {
                 let (_, _, args) = call_stack.parent_nth(depth);
                 let v = args.get(i).unwrap().clone();
@@ -148,8 +162,7 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 stack.push(Value::Function(addr as usize, call_stack.clone()));
             }
             StructAddr(ref map) => {
-                let addr = stack.pop().unwrap().into_number()?;
-                stack.push(Value::Struct(addr as usize, map.clone()));
+                stack.push(Value::Struct(map.clone()));
             }
             Call(arg_len) => {
                 let mut args = Vec::new();
@@ -166,6 +179,14 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
 
                 i = addr;
                 continue;
+            }
+            Access => {
+                let name = stack.pop().unwrap().into_string()?;
+                let map = stack.pop().unwrap().into_struct()?;
+                let id = map.get(&*name).unwrap();
+
+                let cnt = label_map.get(&id).unwrap();
+                stack.push(Value::Function(*cnt, call_stack.clone()));
             }
         }
 
