@@ -2,7 +2,7 @@ use crate::token::*;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_until},
-    character::complete::{alpha1, char, digit1, space0},
+    character::complete::{alpha1, char, digit1, multispace0},
     combinator::{all_consuming, map, opt},
     multi::{fold_many0, many0, separated_list},
     sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
@@ -32,7 +32,7 @@ fn block(input: &str) -> IResult<&str, Primary> {
 }
 
 fn arrow(input: &str) -> IResult<&str, &str> {
-    delimited(space0, tag("=>"), space0)(input)
+    delimited(multispace0, tag("=>"), multispace0)(input)
 }
 
 fn call(input: &str) -> IResult<&str, OperationRight> {
@@ -53,7 +53,7 @@ fn args(input: &str) -> IResult<&str, Vec<String>> {
     map(
         delimited(
             char('('),
-            separated_list(char(','), delimited(space0, alpha1, space0)),
+            separated_list(char(','), delimited(multispace0, alpha1, multispace0)),
             char(')'),
         ),
         |args: Vec<&str>| args.into_iter().map(|s| s.to_string()).collect(),
@@ -93,8 +93,8 @@ fn access(input: &str) -> IResult<&str, OperationRight> {
 }
 
 fn operation(input: &str) -> IResult<&str, Operation> {
-    let (input, left) = preceded(space0, primary)(input)?;
-    let (input, rights) = terminated(many0(alt((access, call, index))), space0)(input)?;
+    let (input, left) = preceded(multispace0, primary)(input)?;
+    let (input, rights) = terminated(many0(alt((access, call, index))), multispace0)(input)?;
     Ok((input, Operation { left, rights }))
 }
 
@@ -155,7 +155,7 @@ fn bind(input: &str) -> IResult<&str, (String, Expression)> {
 }
 
 fn definitions(input: &str) -> IResult<&str, Vec<(String, Expression)>> {
-    separated_list(char(','), delimited(space0, bind, space0))(input)
+    separated_list(char(','), delimited(multispace0, bind, multispace0))(input)
 }
 
 fn statement(input: &str) -> IResult<&str, Statement> {
@@ -173,9 +173,9 @@ fn statement(input: &str) -> IResult<&str, Statement> {
 
 fn if_(input: &str) -> IResult<&str, Expression> {
     let (input, (cond, cons, alt)) = delimited(
-        space0,
+        multispace0,
         preceded(tag("if"), tuple((expression, expression, expression))),
-        space0,
+        multispace0,
     )(input)?;
     Ok((
         input,
