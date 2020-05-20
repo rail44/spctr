@@ -42,6 +42,13 @@ fn call(input: &str) -> IResult<&str, OperationRight> {
     )(input)
 }
 
+fn index(input: &str) -> IResult<&str, OperationRight> {
+    map(
+        delimited(char('['), expression, char(']')),
+        OperationRight::Index,
+    )(input)
+}
+
 fn args(input: &str) -> IResult<&str, Vec<String>> {
     map(
         delimited(
@@ -87,7 +94,7 @@ fn access(input: &str) -> IResult<&str, OperationRight> {
 
 fn operation(input: &str) -> IResult<&str, Operation> {
     let (input, left) = preceded(space0, primary)(input)?;
-    let (input, rights) = terminated(many0(alt((access, call))), space0)(input)?;
+    let (input, rights) = terminated(many0(alt((access, call, index))), space0)(input)?;
     Ok((input, Operation { left, rights }))
 }
 

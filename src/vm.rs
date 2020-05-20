@@ -48,6 +48,13 @@ impl Value {
             _ => Err(anyhow!("{:?} is not struct", self)),
         }
     }
+
+    fn into_array(self) -> Result<Rc<Vec<usize>>> {
+        match self {
+            Value::Array(v) => Ok(v),
+            _ => Err(anyhow!("{:?} is not array", self)),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -186,6 +193,13 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
 
                 let cnt = label_map.get(&id).unwrap();
                 stack.push(Value::Function(*cnt, call_stack.clone()));
+            }
+            Index => {
+                let index = stack.pop().unwrap().into_number()?;
+                let array = stack.pop().unwrap().into_array()?;
+                let addr = array.get(index as usize).unwrap();
+
+                stack.push(Value::Function(*addr, call_stack.clone()));
             }
         }
 

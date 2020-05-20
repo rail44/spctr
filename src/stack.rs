@@ -22,6 +22,7 @@ pub enum Cmd {
     JumpRel(usize),
     JumpRelIf(usize),
     Call(usize),
+    Index,
     Access,
 }
 
@@ -182,6 +183,11 @@ impl<'a> Translator<'a> {
                         cmd.append(&mut self.translate_expression(arg));
                     }
                     cmd.push(Cmd::Call(args.len()));
+                }
+                OperationRight::Index(arg) => {
+                    cmd.append(&mut self.translate_expression(arg));
+                    cmd.push(Cmd::Index);
+                    cmd.push(Cmd::Call(0));
                 }
             }
         }
