@@ -38,7 +38,7 @@ fn arrow(input: &str) -> IResult<&str, &str> {
 fn call(input: &str) -> IResult<&str, OperationRight> {
     map(
         delimited(char('('), separated_list(char(','), expression), char(')')),
-        |args| OperationRight::Call(args),
+        OperationRight::Call,
     )(input)
 }
 
@@ -71,7 +71,7 @@ fn struct_(input: &str) -> IResult<&str, Primary> {
 fn array(input: &str) -> IResult<&str, Primary> {
     map(
         delimited(char('['), separated_list(char(','), expression), char(']')),
-        |items| Primary::Array(items),
+        Primary::Array,
     )(input)
 }
 

@@ -14,7 +14,7 @@ pub enum Cmd {
     Load(usize, usize),
     NumberConst(f64),
     StringConst(Rc<String>),
-    ArrayConst(usize),
+    ArrayConst(Rc<Vec<usize>>),
     FunctionAddr(usize),
     StructAddr(Rc<HashMap<String, usize>>),
     Label(usize, usize),
@@ -242,11 +242,21 @@ impl<'a> Translator<'a> {
                 cmd
             }
             Primary::Array(items) => {
-                let mut cmd = Vec::new();
+                let mut addrs = Vec::new();
+                let mut items_cmd = Vec::new();
+                let mut addr = 2;
                 for item in items {
-                    cmd.append(&mut self.translate_expression(item));
+                    let mut item_cmd = self.translate_expression(item);
+                    item_cmd.push(Cmd::Return);
+                    addrs.push(addr);
+                    addr += item_cmd.len();
+                    items_cmd.append(&mut item_cmd);
                 }
-                cmd.push(Cmd::ArrayConst(items.len()));
+
+                let mut cmd = Vec::new();
+                cmd.push(Cmd::ArrayConst(Rc::new(addrs)));
+                cmd.push(Cmd::JumpRel(items_cmd.len() + 1));
+                cmd.append(&mut items_cmd);
                 cmd
             }
         }

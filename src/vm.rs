@@ -8,7 +8,7 @@ enum Value {
     Number(f64),
     Bool(bool),
     String(Rc<String>),
-    Array(Rc<Vec<Value>>),
+    Array(Rc<Vec<usize>>),
     Function(usize, CallStack),
     Struct(Rc<HashMap<String, usize>>),
 }
@@ -124,13 +124,9 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             StringConst(ref s) => {
                 stack.push(Value::String(s.clone()));
             }
-            ArrayConst(len) => {
-                let mut vec = Vec::new();
-                for _ in 0..len {
-                    vec.push(stack.pop().unwrap());
-                }
-                vec.reverse();
-                stack.push(Value::Array(Rc::new(vec)));
+            ArrayConst(ref addrs) => {
+                let abs_addrs: Vec<_> = addrs.iter().map(|addr| i + addr).collect();
+                stack.push(Value::Array(Rc::new(abs_addrs)));
             }
             Label(id, addr) => {
                 label_map.insert(id, i + addr);
