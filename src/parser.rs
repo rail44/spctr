@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::{tag, take_until},
     character::complete::{alpha1, char, digit1, space0},
     combinator::{all_consuming, map, opt},
-    multi::{fold_many0, separated_list},
+    multi::{fold_many0, many0, separated_list},
     sequence::{delimited, pair, preceded, separated_pair, tuple},
     IResult,
 };
@@ -26,12 +26,6 @@ fn identifier(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::Identifier(s.to_string())))
 }
 
-fn call(input: &str) -> IResult<&str, Primary> {
-    map(pair(alpha1, call_args), |(name, args)| {
-        Primary::Call(name.to_string(), args)
-    })(input)
-}
-
 fn block(input: &str) -> IResult<&str, Primary> {
     let (input, s) = delimited(char('{'), statement, char('}'))(input)?;
     Ok((input, Primary::Block(Box::new(s))))
@@ -41,8 +35,11 @@ fn arrow(input: &str) -> IResult<&str, &str> {
     delimited(space0, tag("=>"), space0)(input)
 }
 
-fn call_args(input: &str) -> IResult<&str, Vec<Expression>> {
-    delimited(char('('), separated_list(char(','), expression), char(')'))(input)
+fn call(input: &str) -> IResult<&str, OperationRight> {
+    map(
+        delimited(char('('), separated_list(char(','), expression), char(')')),
+        |args| OperationRight::Call(args)
+    )(input)
 }
 
 fn args(input: &str) -> IResult<&str, Vec<String>> {
@@ -74,25 +71,28 @@ fn struct_(input: &str) -> IResult<&str, Primary> {
 fn primary(input: &str) -> IResult<&str, Primary> {
     delimited(
         space0,
-        alt((number, string, call, identifier, block, function, struct_)),
+        alt((number, string, identifier, block, function, struct_)),
         space0,
     )(input)
 }
 
-fn access(input: &str) -> IResult<&str, Access> {
+fn access(input: &str) -> IResult<&str, OperationRight> {
     map(
-        tuple((primary, opt(char('.')), separated_list(char('.'), alpha1))),
-        |(left, _, rights)| Access {
-            left,
-            rights: rights.into_iter().map(|s| s.to_string()).collect(),
-        },
+        preceded(char('.'), alpha1),
+        |prop: &str| OperationRight::Access(prop.to_string())
     )(input)
 }
 
+fn operation(input: &str) -> IResult<&str, Operation> {
+    let (input, left) = primary(input)?;
+    let (input, rights) = many0(alt((access, call)))(input)?;
+    Ok((input, Operation { left, rights }))
+}
+
 fn multitive(input: &str) -> IResult<&str, Multitive> {
-    let (input, left) = access(input)?;
+    let (input, left) = operation(input)?;
     let (input, rights) = fold_many0(
-        pair(alt((char('*'), char('/'))), access),
+        pair(alt((char('*'), char('/'))), operation),
         Vec::new(),
         |mut vec, (op, val)| {
             match op {

@@ -70,7 +70,6 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
     let mut stack: Vec<Value> = Vec::new();
     let mut call_stack: CallStack = CallStack(None);
     while program.len() > i {
-        dbg!(i, program[i].clone(), stack.clone(), call_stack.clone());
         use Cmd::*;
         match program[i] {
             Add => {
@@ -153,13 +152,14 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 stack.push(Value::Struct(addr as usize, map.clone()));
             }
             Call(arg_len) => {
-                let (addr, closure_call_stack) = stack.pop().unwrap().into_function()?;
-                let ret_addr = i + 1;
-                let ret_frame = call_stack;
                 let mut args = Vec::new();
                 for _ in 0..arg_len {
                     args.push(stack.pop().unwrap());
                 }
+
+                let (addr, closure_call_stack) = stack.pop().unwrap().into_function()?;
+                let ret_addr = i + 1;
+                let ret_frame = call_stack;
 
                 call_stack = closure_call_stack;
                 call_stack.push((ret_addr, ret_frame, args));

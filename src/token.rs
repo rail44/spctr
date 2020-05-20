@@ -44,20 +44,26 @@ pub enum AdditiveRight {
 
 #[derive(Clone, Debug)]
 pub struct Multitive {
-    pub left: Access,
+    pub left: Operation,
     pub rights: Vec<MultitiveRight>,
 }
 
 #[derive(Clone, Debug)]
 pub enum MultitiveRight {
-    Mul(Access),
-    Div(Access),
+    Mul(Operation),
+    Div(Operation),
 }
 
 #[derive(Clone, Debug)]
-pub struct Access {
+pub struct Operation {
     pub left: Primary,
-    pub rights: Vec<String>,
+    pub rights: Vec<OperationRight>,
+}
+
+#[derive(Clone, Debug)]
+pub enum OperationRight {
+    Access(String),
+    Call(Vec<Expression>)
 }
 
 #[derive(Clone, Debug)]
@@ -65,7 +71,6 @@ pub enum Primary {
     Number(f64),
     String(String),
     Identifier(String),
-    Call(String, Vec<Expression>),
     Block(Box<Statement>),
     Function(Vec<String>, Box<Expression>),
     Struct(Vec<Bind>),

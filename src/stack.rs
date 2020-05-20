@@ -155,15 +155,15 @@ impl<'a> Translator<'a> {
     }
 
     fn translate_multitive(&mut self, v: &Multitive) -> Vec<Cmd> {
-        let mut cmd = self.translate_access(&v.left);
+        let mut cmd = self.translate_operation(&v.left);
         for right in &v.rights {
             match right {
                 MultitiveRight::Mul(r) => {
-                    cmd.append(&mut self.translate_access(&r));
+                    cmd.append(&mut self.translate_operation(&r));
                     cmd.push(Cmd::Mul);
                 }
                 MultitiveRight::Div(r) => {
-                    cmd.append(&mut self.translate_access(&r));
+                    cmd.append(&mut self.translate_operation(&r));
                     cmd.push(Cmd::Div);
                 }
             }
@@ -171,8 +171,21 @@ impl<'a> Translator<'a> {
         cmd
     }
 
-    fn translate_access(&mut self, v: &Access) -> Vec<Cmd> {
-        let cmd = self.translate_primary(&v.left);
+    fn translate_operation(&mut self, v: &Operation) -> Vec<Cmd> {
+        let mut cmd = self.translate_primary(&v.left);
+        for right in &v.rights {
+            match right {
+                OperationRight::Access(_) => {
+                    unimplemented!();
+                }
+                OperationRight::Call(args) => {
+                    for arg in args {
+                        cmd.append(&mut self.translate_expression(arg));
+                    }
+                    cmd.push(Cmd::Call(args.len()));
+                }
+            }
+        }
         cmd
     }
 
@@ -203,16 +216,6 @@ impl<'a> Translator<'a> {
                 cmd.push(Cmd::FunctionAddr);
                 cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
                 cmd.append(&mut body_cmd);
-                cmd
-            }
-            Primary::Call(name, args) => {
-                let mut cmd = Vec::new();
-                for arg in args {
-                    cmd.append(&mut self.translate_expression(arg));
-                }
-                let mut identifier_cmd = self.translate_identifier(name);
-                cmd.append(&mut identifier_cmd);
-                cmd.push(Cmd::Call(args.len()));
                 cmd
             }
             Primary::Struct(definitions) => {
