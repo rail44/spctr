@@ -115,6 +115,11 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 let l = stack.pop().unwrap().into_number()?;
                 stack.push(Value::Number(l / r));
             }
+            Surplus => {
+                let r = stack.pop().unwrap().into_number()?;
+                let l = stack.pop().unwrap().into_number()?;
+                stack.push(Value::Number(l % r));
+            }
             Equal => {
                 let r = stack.pop().unwrap().into_number()?;
                 let l = stack.pop().unwrap().into_number()?;

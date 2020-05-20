@@ -8,6 +8,7 @@ pub enum Cmd {
     Sub,
     Div,
     Mul,
+    Surplus,
     Equal,
     NotEqual,
     Return,
@@ -163,6 +164,10 @@ impl<'a> Translator<'a> {
                 MultitiveRight::Div(r) => {
                     cmd.append(&mut self.translate_operation(&r));
                     cmd.push(Cmd::Div);
+                }
+                MultitiveRight::Surplus(r) => {
+                    cmd.append(&mut self.translate_operation(&r));
+                    cmd.push(Cmd::Surplus);
                 }
             }
         }

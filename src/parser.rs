@@ -101,12 +101,13 @@ fn operation(input: &str) -> IResult<&str, Operation> {
 fn multitive(input: &str) -> IResult<&str, Multitive> {
     let (input, left) = operation(input)?;
     let (input, rights) = fold_many0(
-        pair(alt((char('*'), char('/'))), operation),
+        pair(alt((char('*'), char('/'), char('%'))), operation),
         Vec::new(),
         |mut vec, (op, val)| {
             match op {
                 '*' => vec.push(MultitiveRight::Mul(val)),
                 '/' => vec.push(MultitiveRight::Div(val)),
+                '%' => vec.push(MultitiveRight::Surplus(val)),
                 _ => unreachable!(),
             };
             vec

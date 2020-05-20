@@ -52,6 +52,7 @@ pub struct Multitive {
 pub enum MultitiveRight {
     Mul(Operation),
     Div(Operation),
+    Surplus(Operation),
 }
 
 #[derive(Clone, Debug)]
