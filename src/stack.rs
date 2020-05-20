@@ -14,13 +14,12 @@ pub enum Cmd {
     Load(usize, usize),
     NumberConst(f64),
     StringConst(Rc<String>),
-    FunctionAddr,
+    FunctionAddr(usize),
     StructAddr(Rc<HashMap<String, usize>>),
-    Label(usize),
+    Label(usize, usize),
     LabelAddr(usize),
     JumpRel(usize),
     JumpRelIf(usize),
-    ProgramCounter,
     Call(usize),
     Access
 }
@@ -84,10 +83,7 @@ impl<'a> Translator<'a> {
             let mut body_cmd = self.translate_expression(&body);
             body_cmd.push(Cmd::Return);
 
-            cmd.push(Cmd::ProgramCounter);
-            cmd.push(Cmd::NumberConst(5_f64));
-            cmd.push(Cmd::Add);
-            cmd.push(Cmd::Label(id));
+            cmd.push(Cmd::Label(id, 2));
             cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
             cmd.append(&mut body_cmd);
         }
@@ -211,10 +207,7 @@ impl<'a> Translator<'a> {
                 body_cmd.push(Cmd::Return);
 
                 let mut cmd = Vec::new();
-                cmd.push(Cmd::ProgramCounter);
-                cmd.push(Cmd::NumberConst(5_f64));
-                cmd.push(Cmd::Add);
-                cmd.push(Cmd::FunctionAddr);
+                cmd.push(Cmd::FunctionAddr(2));
                 cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
                 cmd.append(&mut body_cmd);
                 cmd
@@ -238,10 +231,7 @@ impl<'a> Translator<'a> {
                     let mut body_cmd = translator.translate_expression(&body);
                     body_cmd.push(Cmd::Return);
 
-                    cmd.push(Cmd::ProgramCounter);
-                    cmd.push(Cmd::NumberConst(5_f64));
-                    cmd.push(Cmd::Add);
-                    cmd.push(Cmd::Label(id));
+                    cmd.push(Cmd::Label(id, 2));
                     cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
                     cmd.append(&mut body_cmd);
                 }

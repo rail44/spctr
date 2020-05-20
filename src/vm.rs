@@ -124,16 +124,12 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             StringConst(ref s) => {
                 stack.push(Value::String(s.clone()));
             }
-            Label(id) => {
-                let cnt = stack.pop().unwrap().into_number()?;
-                label_map.insert(id, cnt as usize);
+            Label(id, addr) => {
+                label_map.insert(id, i + addr);
             }
             LabelAddr(id) => {
                 let cnt = label_map.get(&id).unwrap();
                 stack.push(Value::Function(*cnt, call_stack.clone()));
-            }
-            ProgramCounter => {
-                stack.push(Value::Number(i as f64));
             }
             JumpRel(n) => {
                 i += n;
@@ -157,9 +153,8 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 let v = args.get(i).unwrap().clone();
                 stack.push(v);
             }
-            FunctionAddr => {
-                let addr = stack.pop().unwrap().into_number()?;
-                stack.push(Value::Function(addr as usize, call_stack.clone()));
+            FunctionAddr(addr) => {
+                stack.push(Value::Function(addr + i, call_stack.clone()));
             }
             StructAddr(ref map) => {
                 stack.push(Value::Struct(map.clone()));
