@@ -1,8 +1,8 @@
 use crate::token::*;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until},
-    character::complete::{alpha1, char, digit1, multispace0},
+    bytes::complete::{tag, take_until, take_while1},
+    character::complete::{char, digit1, multispace0},
     combinator::{all_consuming, map, opt},
     multi::{fold_many0, many0, separated_list},
     sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
@@ -21,9 +21,18 @@ fn number(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::Number(n)))
 }
 
-fn identifier(input: &str) -> IResult<&str, Primary> {
-    let (input, s) = alpha1(input)?;
-    Ok((input, Primary::Identifier(s.to_string())))
+fn identifier(input: &str) -> IResult<&str, String> {
+    map(
+        take_while1(|chr: char| chr.is_alphabetic() || chr == '_'),
+        |s: &str| s.to_string()
+    )(input)
+}
+
+fn variable(input: &str) -> IResult<&str, Primary> {
+    map(
+        identifier,
+        Primary::Variable
+    )(input)
 }
 
 fn block(input: &str) -> IResult<&str, Primary> {
@@ -50,13 +59,10 @@ fn index(input: &str) -> IResult<&str, OperationRight> {
 }
 
 fn args(input: &str) -> IResult<&str, Vec<String>> {
-    map(
-        delimited(
-            char('('),
-            separated_list(char(','), delimited(multispace0, alpha1, multispace0)),
-            char(')'),
-        ),
-        |args: Vec<&str>| args.into_iter().map(|s| s.to_string()).collect(),
+    delimited(
+        char('('),
+        separated_list(char(','), delimited(multispace0, identifier, multispace0)),
+        char(')'),
     )(input)
 }
 
@@ -83,13 +89,14 @@ fn array(input: &str) -> IResult<&str, Primary> {
 }
 
 fn primary(input: &str) -> IResult<&str, Primary> {
-    alt((number, string, identifier, block, array, function, struct_))(input)
+    alt((number, string, variable, block, array, function, struct_))(input)
 }
 
 fn access(input: &str) -> IResult<&str, OperationRight> {
-    map(preceded(char('.'), alpha1), |prop: &str| {
-        OperationRight::Access(prop.to_string())
-    })(input)
+    map(
+        preceded(char('.'), identifier),
+        OperationRight::Access
+    )(input)
 }
 
 fn operation(input: &str) -> IResult<&str, Operation> {
@@ -151,7 +158,7 @@ fn comparison(input: &str) -> IResult<&str, Expression> {
 }
 
 fn bind(input: &str) -> IResult<&str, (String, Expression)> {
-    let (input, (label, v)) = separated_pair(alpha1, char(':'), expression)(input)?;
+    let (input, (label, v)) = separated_pair(identifier, char(':'), expression)(input)?;
     Ok((input, (label.to_string(), v)))
 }
 

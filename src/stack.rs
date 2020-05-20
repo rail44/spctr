@@ -203,7 +203,7 @@ impl<'a> Translator<'a> {
         match v {
             Primary::Number(v) => vec![Cmd::NumberConst(*v)],
             Primary::String(s) => vec![Cmd::StringConst(Rc::new(s.clone()))],
-            Primary::Identifier(name) => self.translate_identifier(name),
+            Primary::Variable(name) => self.translate_identifier(name),
             Primary::Block(statement) => {
                 let mut translator = self.fork();
                 translator.translate(statement)

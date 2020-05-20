@@ -72,7 +72,7 @@ pub enum OperationRight {
 pub enum Primary {
     Number(f64),
     String(String),
-    Identifier(String),
+    Variable(String),
     Block(Box<Statement>),
     Array(Vec<Expression>),
     Function(Vec<String>, Box<Expression>),
