@@ -68,8 +68,15 @@ fn struct_(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::Struct(s)))
 }
 
+fn array(input: &str) -> IResult<&str, Primary> {
+    map(
+        delimited(char('['), separated_list(char(','), expression), char(']')),
+        |items| Primary::Array(items)
+    )(input)
+}
+
 fn primary(input: &str) -> IResult<&str, Primary> {
-    alt((number, string, identifier, block, function, struct_))(input)
+    alt((number, string, identifier, block, array, function, struct_))(input)
 }
 
 fn access(input: &str) -> IResult<&str, OperationRight> {
