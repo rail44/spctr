@@ -1,6 +1,9 @@
+use crate::parser;
 use crate::token::*;
-use crate::vm::{ForeignFunction, Value};
+use crate::vm;
+use crate::vm::ForeignFunction;
 use std::collections::HashMap;
+use std::fs;
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
@@ -12,12 +15,11 @@ pub enum Cmd {
     Surplus,
     Equal,
     NotEqual,
-    Return,
     Load(usize, usize),
     NumberConst(f64),
     StringConst(Rc<String>),
-    ArrayConst(Rc<Vec<usize>>),
-    FunctionAddr(usize),
+    ArrayConst(usize),
+    ConstructFunction(usize),
     ForeignFunction(ForeignFunction),
     StructAddr(Rc<HashMap<String, usize>>),
     Label(usize, usize),
@@ -77,19 +79,24 @@ impl<'a> Translator<'a> {
         let mut cmd = Vec::new();
         {
             let id = self.bind_cnt;
-            let name = "hoge";
+            let name = "import";
             self.env.insert(name.to_string(), Identifier::Bind(id));
 
             self.bind_cnt += 1;
 
             let mut body_cmd = vec![];
-            body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(|_| {
-                Value::Number(0_f64)
-            }))));
-            body_cmd.push(Cmd::Return);
 
-            cmd.push(Cmd::Label(id, 2));
-            cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
+            body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
+                |mut args| {
+                    let source =
+                        fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
+                    let token = parser::parse(&source).unwrap().1;
+                    let stack = get_cmd(&token);
+                    vm::run(stack).unwrap()
+                },
+            ))));
+
+            cmd.push(Cmd::Label(id, body_cmd.len()));
             cmd.append(&mut body_cmd);
         }
 
@@ -104,10 +111,7 @@ impl<'a> Translator<'a> {
 
         for (id, body) in binds {
             let mut body_cmd = self.translate_expression(&body);
-            body_cmd.push(Cmd::Return);
-
-            cmd.push(Cmd::Label(id, 2));
-            cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
+            cmd.push(Cmd::Label(id, body_cmd.len()));
             cmd.append(&mut body_cmd);
         }
 
@@ -236,11 +240,9 @@ impl<'a> Translator<'a> {
                 }
 
                 body_cmd.append(&mut translator.translate_expression(body));
-                body_cmd.push(Cmd::Return);
 
                 let mut cmd = Vec::new();
-                cmd.push(Cmd::FunctionAddr(2));
-                cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
+                cmd.push(Cmd::ConstructFunction(body_cmd.len()));
                 cmd.append(&mut body_cmd);
                 cmd
             }
@@ -262,10 +264,8 @@ impl<'a> Translator<'a> {
 
                 for (id, body) in binds {
                     let mut body_cmd = translator.translate_expression(&body);
-                    body_cmd.push(Cmd::Return);
 
-                    cmd.push(Cmd::Label(id, 2));
-                    cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
+                    cmd.push(Cmd::Label(id, body_cmd.len()));
                     cmd.append(&mut body_cmd);
                 }
 
@@ -274,21 +274,14 @@ impl<'a> Translator<'a> {
                 cmd
             }
             Primary::Array(items) => {
-                let mut addrs = Vec::new();
-                let mut items_cmd = Vec::new();
-                let mut addr = 2;
+                let mut cmd = Vec::new();
                 for item in items {
                     let mut item_cmd = self.translate_expression(item);
-                    item_cmd.push(Cmd::Return);
-                    addrs.push(addr);
-                    addr += item_cmd.len();
-                    items_cmd.append(&mut item_cmd);
+                    cmd.push(Cmd::ConstructFunction(item_cmd.len()));
+                    cmd.append(&mut item_cmd);
                 }
 
-                let mut cmd = Vec::new();
-                cmd.push(Cmd::ArrayConst(Rc::new(addrs)));
-                cmd.push(Cmd::JumpRel(items_cmd.len() + 1));
-                cmd.append(&mut items_cmd);
+                cmd.push(Cmd::ArrayConst(items.len()));
                 cmd
             }
         }
