@@ -290,7 +290,7 @@ impl<'a> Translator<'a> {
     fn translate_identifier(&self, name: &str) -> Vec<Cmd> {
         let id = self
             .get_bind(name)
-            .expect(&format!("could not find bind by \"{}\"", name));
+            .unwrap_or_else(|| panic!("could not find bind by \"{}\"", name));
         let mut cmd = Vec::new();
 
         match id {

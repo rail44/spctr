@@ -19,7 +19,7 @@ pub enum Value {
     Bool(bool),
     String(Rc<String>),
     Array(Rc<Vec<Function>>),
-    Struct(Rc<HashMap<String, usize>>),
+    Struct(Rc<HashMap<String, usize>>, CallStack),
     Function(Function),
 }
 
@@ -58,9 +58,9 @@ impl Value {
         }
     }
 
-    pub fn into_struct(self) -> Result<Rc<HashMap<String, usize>>> {
+    pub fn into_struct(self) -> Result<(Rc<HashMap<String, usize>>, CallStack)> {
         match self {
-            Value::Struct(map) => Ok(map),
+            Value::Struct(map, call_stack) => Ok((map, call_stack)),
             _ => Err(anyhow!("{:?} is not struct", self)),
         }
     }
@@ -122,10 +122,18 @@ impl VM {
     }
 
     fn run(&mut self, program: Vec<Cmd>) -> Result<Value> {
+        dbg!(program.clone());
         let mut i: usize = 0;
         let mut stack: Vec<Value> = Vec::new();
         while program.len() > i {
             use Cmd::*;
+            dbg!(
+                i,
+                program[i].clone(),
+                stack.clone(),
+                self.call_stack.clone()
+            );
+            println!();
             match program[i] {
                 Add => {
                     let r = stack.pop().unwrap().into_number()?;
@@ -155,12 +163,12 @@ impl VM {
                 Equal => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Bool(l == r));
+                    stack.push(Value::Bool((l - r).abs() < f64::EPSILON));
                 }
                 NotEqual => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Bool(l != r));
+                    stack.push(Value::Bool((l - r).abs() > f64::EPSILON));
                 }
                 NumberConst(n) => {
                     stack.push(Value::Number(n));
@@ -220,7 +228,7 @@ impl VM {
                     stack.push(Value::Function(Function::Foreign(func.clone())));
                 }
                 StructAddr(ref map) => {
-                    stack.push(Value::Struct(map.clone()));
+                    stack.push(Value::Struct(map.clone(), self.call_stack.clone()));
                 }
                 Call(arg_len) => {
                     let mut args = Vec::new();
@@ -247,14 +255,11 @@ impl VM {
                 }
                 Access => {
                     let name = stack.pop().unwrap().into_string()?;
-                    let map = stack.pop().unwrap().into_struct()?;
+                    let (map, call_stack) = stack.pop().unwrap().into_struct()?;
                     let id = map.get(&*name).unwrap();
 
-                    let cnt = self.label_map.get(&id).unwrap();
-                    stack.push(Value::Function(Function::Native(
-                        cnt.clone(),
-                        self.call_stack.clone(),
-                    )));
+                    let body = self.label_map.get(&id).unwrap();
+                    stack.push(Value::Function(Function::Native(body.clone(), call_stack)));
                 }
                 Index => {
                     let index = stack.pop().unwrap().into_number()?;
