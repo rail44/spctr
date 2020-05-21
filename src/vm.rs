@@ -1,16 +1,32 @@
 use crate::stack::Cmd;
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
 
+#[derive(Clone)]
+pub struct ForeignFunction(pub Rc<dyn Fn(Vec<Value>) -> Value>);
+
+impl fmt::Debug for ForeignFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[native function]")
+    }
+}
+
 #[derive(Clone, Debug)]
-enum Value {
+pub enum Value {
     Number(f64),
     Bool(bool),
     String(Rc<String>),
     Array(Rc<Vec<usize>>),
-    Function(usize, CallStack),
     Struct(Rc<HashMap<String, usize>>),
+    Function(Function),
+}
+
+#[derive(Clone, Debug)]
+pub enum Function {
+    Native(usize, CallStack),
+    Foreign(ForeignFunction),
 }
 
 impl Value {
@@ -28,9 +44,9 @@ impl Value {
         }
     }
 
-    fn into_function(self) -> Result<(usize, CallStack)> {
+    fn into_function(self) -> Result<Function> {
         match self {
-            Value::Function(addr, call_stack) => Ok((addr, call_stack)),
+            Value::Function(func) => Ok(func),
             _ => Err(anyhow!("{:?} is not function", self)),
         }
     }
@@ -58,7 +74,7 @@ impl Value {
 }
 
 #[derive(Clone, Debug)]
-struct CallStack(Option<Rc<(StackFrame, CallStack)>>);
+pub struct CallStack(Option<Rc<(StackFrame, CallStack)>>);
 
 type StackFrame = (usize, CallStack, Vec<Value>);
 
@@ -145,7 +161,7 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
             }
             LabelAddr(id) => {
                 let cnt = label_map.get(&id).unwrap();
-                stack.push(Value::Function(*cnt, call_stack.clone()));
+                stack.push(Value::Function(Function::Native(*cnt, call_stack.clone())));
             }
             JumpRel(n) => {
                 i += n;
@@ -170,7 +186,13 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 stack.push(v);
             }
             FunctionAddr(addr) => {
-                stack.push(Value::Function(addr + i, call_stack.clone()));
+                stack.push(Value::Function(Function::Native(
+                    addr + i,
+                    call_stack.clone(),
+                )));
+            }
+            ForeignFunction(ref func) => {
+                stack.push(Value::Function(Function::Foreign(func.clone())));
             }
             StructAddr(ref map) => {
                 stack.push(Value::Struct(map.clone()));
@@ -181,15 +203,21 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                     args.push(stack.pop().unwrap());
                 }
 
-                let (addr, closure_call_stack) = stack.pop().unwrap().into_function()?;
-                let ret_addr = i + 1;
-                let ret_frame = call_stack;
+                match stack.pop().unwrap().into_function()? {
+                    Function::Native(addr, closure_call_stack) => {
+                        let ret_addr = i + 1;
+                        let ret_frame = call_stack;
 
-                call_stack = closure_call_stack;
-                call_stack.push((ret_addr, ret_frame, args));
+                        call_stack = closure_call_stack;
+                        call_stack.push((ret_addr, ret_frame, args));
 
-                i = addr;
-                continue;
+                        i = addr;
+                        continue;
+                    }
+                    Function::Foreign(func) => {
+                        stack.push(func.0(args));
+                    }
+                }
             }
             Access => {
                 let name = stack.pop().unwrap().into_string()?;
@@ -197,14 +225,14 @@ pub fn run(program: Vec<Cmd>) -> Result<String> {
                 let id = map.get(&*name).unwrap();
 
                 let cnt = label_map.get(&id).unwrap();
-                stack.push(Value::Function(*cnt, call_stack.clone()));
+                stack.push(Value::Function(Function::Native(*cnt, call_stack.clone())));
             }
             Index => {
                 let index = stack.pop().unwrap().into_number()?;
                 let array = stack.pop().unwrap().into_array()?;
                 let addr = array.get(index as usize).unwrap();
 
-                stack.push(Value::Function(*addr, call_stack.clone()));
+                stack.push(Value::Function(Function::Native(*addr, call_stack.clone())));
             }
         }
 

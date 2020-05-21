@@ -1,4 +1,5 @@
 use crate::token::*;
+use crate::vm::{ForeignFunction, Value};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -17,6 +18,7 @@ pub enum Cmd {
     StringConst(Rc<String>),
     ArrayConst(Rc<Vec<usize>>),
     FunctionAddr(usize),
+    ForeignFunction(ForeignFunction),
     StructAddr(Rc<HashMap<String, usize>>),
     Label(usize, usize),
     LabelAddr(usize),
@@ -72,6 +74,25 @@ impl<'a> Translator<'a> {
     }
 
     fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
+        let mut cmd = Vec::new();
+        {
+            let id = self.bind_cnt;
+            let name = "hoge";
+            self.env.insert(name.to_string(), Identifier::Bind(id));
+
+            self.bind_cnt += 1;
+
+            let mut body_cmd = vec![];
+            body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(|_| {
+                Value::Number(0_f64)
+            }))));
+            body_cmd.push(Cmd::Return);
+
+            cmd.push(Cmd::Label(id, 2));
+            cmd.push(Cmd::JumpRel(body_cmd.len() + 1));
+            cmd.append(&mut body_cmd);
+        }
+
         let mut binds = Vec::new();
         for bind in v.definitions.iter() {
             let id = self.bind_cnt;
@@ -81,7 +102,6 @@ impl<'a> Translator<'a> {
             binds.push((id, &bind.1));
         }
 
-        let mut cmd = Vec::new();
         for (id, body) in binds {
             let mut body_cmd = self.translate_expression(&body);
             body_cmd.push(Cmd::Return);
@@ -229,6 +249,8 @@ impl<'a> Translator<'a> {
                 let mut binds = Vec::new();
 
                 let mut map = HashMap::new();
+
+                let mut cmd = Vec::new();
                 for bind in definitions {
                     let id = translator.bind_cnt;
                     translator.env.insert(bind.0.clone(), Identifier::Bind(id));
@@ -238,7 +260,6 @@ impl<'a> Translator<'a> {
                     binds.push((id, &bind.1));
                 }
 
-                let mut cmd = Vec::new();
                 for (id, body) in binds {
                     let mut body_cmd = translator.translate_expression(&body);
                     body_cmd.push(Cmd::Return);
@@ -274,7 +295,9 @@ impl<'a> Translator<'a> {
     }
 
     fn translate_identifier(&self, name: &str) -> Vec<Cmd> {
-        let id = self.get_bind(name).unwrap();
+        let id = self
+            .get_bind(name)
+            .expect(&format!("could not find bind by \"{}\"", name));
         let mut cmd = Vec::new();
 
         match id {

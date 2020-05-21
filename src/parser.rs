@@ -24,15 +24,12 @@ fn number(input: &str) -> IResult<&str, Primary> {
 fn identifier(input: &str) -> IResult<&str, String> {
     map(
         take_while1(|chr: char| chr.is_alphabetic() || chr == '_'),
-        |s: &str| s.to_string()
+        |s: &str| s.to_string(),
     )(input)
 }
 
 fn variable(input: &str) -> IResult<&str, Primary> {
-    map(
-        identifier,
-        Primary::Variable
-    )(input)
+    map(identifier, Primary::Variable)(input)
 }
 
 fn block(input: &str) -> IResult<&str, Primary> {
@@ -93,10 +90,7 @@ fn primary(input: &str) -> IResult<&str, Primary> {
 }
 
 fn access(input: &str) -> IResult<&str, OperationRight> {
-    map(
-        preceded(char('.'), identifier),
-        OperationRight::Access
-    )(input)
+    map(preceded(char('.'), identifier), OperationRight::Access)(input)
 }
 
 fn operation(input: &str) -> IResult<&str, Operation> {
@@ -159,7 +153,7 @@ fn comparison(input: &str) -> IResult<&str, Expression> {
 
 fn bind(input: &str) -> IResult<&str, (String, Expression)> {
     let (input, (label, v)) = separated_pair(identifier, char(':'), expression)(input)?;
-    Ok((input, (label.to_string(), v)))
+    Ok((input, (label, v)))
 }
 
 fn definitions(input: &str) -> IResult<&str, Vec<(String, Expression)>> {
