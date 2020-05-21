@@ -14,13 +14,20 @@ impl fmt::Debug for ForeignFunction {
 }
 
 #[derive(Clone, Debug)]
-pub enum Value {
+pub struct Value {
+    primitive: Primitive,
+    field: Rc<HashMap<String, usize>>,
+    call_stack: CallStack
+}
+
+#[derive(Clone, Debug)]
+pub enum Primitive {
     Number(f64),
     Bool(bool),
     String(Rc<String>),
-    Array(Rc<Vec<Function>>),
-    Struct(Rc<HashMap<String, usize>>, CallStack),
     Function(Function),
+    Array(Rc<Vec<Function>>),
+    Struct,
 }
 
 #[derive(Clone, Debug)]
@@ -30,45 +37,93 @@ pub enum Function {
 }
 
 impl Value {
+    pub fn number(f: f64) -> Value {
+        Value {
+            primitive: Primitive::Number(f),
+            field: Rc::new(HashMap::new()),
+            call_stack: CallStack(None),
+        }
+    }
+
     pub fn into_number(self) -> Result<f64> {
-        match self {
-            Value::Number(n) => Ok(n),
+        match self.primitive {
+            Primitive::Number(n) => Ok(n),
             _ => Err(anyhow!("not number")),
         }
     }
 
+    pub fn bool(b: bool) -> Value {
+        Value {
+            primitive: Primitive::Bool(b),
+            field: Rc::new(HashMap::new()),
+            call_stack: CallStack(None),
+        }
+    }
+
     pub fn into_bool(self) -> Result<bool> {
-        match self {
-            Value::Bool(b) => Ok(b),
+        match self.primitive {
+            Primitive::Bool(b) => Ok(b),
             _ => Err(anyhow!("not bool")),
         }
     }
 
+    pub fn function(f: Function) -> Value {
+        Value {
+            primitive: Primitive::Function(f),
+            field: Rc::new(HashMap::new()),
+            call_stack: CallStack(None),
+        }
+    }
+
     pub fn into_function(self) -> Result<Function> {
-        match self {
-            Value::Function(func) => Ok(func),
-            _ => Err(anyhow!("{:?} is not function", self)),
+        match self.primitive {
+            Primitive::Function(func) => Ok(func),
+            _ => Err(anyhow!("{:?} is not function", self.primitive)),
+        }
+    }
+
+    pub fn string(s: Rc<String>) -> Value {
+        Value {
+            primitive: Primitive::String(s),
+            field: Rc::new(HashMap::new()),
+            call_stack: CallStack(None),
         }
     }
 
     pub fn into_string(self) -> Result<Rc<String>> {
-        match self {
-            Value::String(s) => Ok(s),
-            _ => Err(anyhow!("{:?} is not string", self)),
+        match self.primitive {
+            Primitive::String(s) => Ok(s),
+            _ => Err(anyhow!("{:?} is not string", self.primitive)),
+        }
+    }
+
+    pub fn struct_(field: Rc<HashMap<String, usize>>, call_stack: CallStack) -> Value {
+        Value {
+            primitive: Primitive::Struct,
+            field,
+            call_stack,
         }
     }
 
     pub fn into_struct(self) -> Result<(Rc<HashMap<String, usize>>, CallStack)> {
-        match self {
-            Value::Struct(map, call_stack) => Ok((map, call_stack)),
-            _ => Err(anyhow!("{:?} is not struct", self)),
+        match self.primitive {
+            Primitive::Struct => Ok((self.field, self.call_stack)),
+            _ => Err(anyhow!("{:?} is not struct", self.primitive)),
+        }
+    }
+
+    pub fn array(v: Rc<Vec<Function>>) -> Value {
+        Value {
+            primitive: Primitive::Array(v),
+            field: Rc::new(HashMap::new()),
+            call_stack: CallStack(None),
         }
     }
 
     pub fn into_array(self) -> Result<Rc<Vec<Function>>> {
-        match self {
-            Value::Array(v) => Ok(v),
-            _ => Err(anyhow!("{:?} is not array", self)),
+        match self.primitive {
+            Primitive::Array(v) => Ok(v),
+            _ => Err(anyhow!("{:?} is not array", self.primitive)),
         }
     }
 }
@@ -138,43 +193,43 @@ impl VM {
                 Add => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Number(l + r));
+                    stack.push(Value::number(l + r));
                 }
                 Sub => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Number(l - r));
+                    stack.push(Value::number(l - r));
                 }
                 Mul => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Number(l * r));
+                    stack.push(Value::number(l * r));
                 }
                 Div => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Number(l / r));
+                    stack.push(Value::number(l / r));
                 }
                 Surplus => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Number(l % r));
+                    stack.push(Value::number(l % r));
                 }
                 Equal => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Bool((l - r).abs() < f64::EPSILON));
+                    stack.push(Value::bool((l - r).abs() < f64::EPSILON));
                 }
                 NotEqual => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::Bool((l - r).abs() > f64::EPSILON));
+                    stack.push(Value::bool((l - r).abs() > f64::EPSILON));
                 }
                 NumberConst(n) => {
-                    stack.push(Value::Number(n));
+                    stack.push(Value::number(n));
                 }
                 StringConst(ref s) => {
-                    stack.push(Value::String(s.clone()));
+                    stack.push(Value::string(s.clone()));
                 }
                 ArrayConst(len) => {
                     let mut vec = Vec::new();
@@ -182,7 +237,7 @@ impl VM {
                         vec.push(stack.pop().unwrap().into_function()?);
                     }
                     vec.reverse();
-                    stack.push(Value::Array(Rc::new(vec)));
+                    stack.push(Value::array(Rc::new(vec)));
                 }
                 Label(id, len) => {
                     let body_base = i + 1;
@@ -193,7 +248,7 @@ impl VM {
                 }
                 LabelAddr(id) => {
                     let body = self.label_map.get(&id).unwrap();
-                    stack.push(Value::Function(Function::Native(
+                    stack.push(Value::function(Function::Native(
                         body.clone(),
                         self.call_stack.clone(),
                     )));
@@ -217,7 +272,7 @@ impl VM {
                 ConstructFunction(len) => {
                     let body_base = i + 1;
                     let body_range = body_base..body_base + len;
-                    stack.push(Value::Function(Function::Native(
+                    stack.push(Value::function(Function::Native(
                         Rc::from(&program[body_range]),
                         self.call_stack.clone(),
                     )));
@@ -225,10 +280,10 @@ impl VM {
                     continue;
                 }
                 ForeignFunction(ref func) => {
-                    stack.push(Value::Function(Function::Foreign(func.clone())));
+                    stack.push(Value::function(Function::Foreign(func.clone())));
                 }
                 StructAddr(ref map) => {
-                    stack.push(Value::Struct(map.clone(), self.call_stack.clone()));
+                    stack.push(Value::struct_(map.clone(), self.call_stack.clone()));
                 }
                 Call(arg_len) => {
                     let mut args = Vec::new();
@@ -259,12 +314,12 @@ impl VM {
                     let id = map.get(&*name).unwrap();
 
                     let body = self.label_map.get(&id).unwrap();
-                    stack.push(Value::Function(Function::Native(body.clone(), call_stack)));
+                    stack.push(Value::function(Function::Native(body.clone(), call_stack)));
                 }
                 Index => {
                     let index = stack.pop().unwrap().into_number()?;
                     let array = stack.pop().unwrap().into_array()?;
-                    stack.push(Value::Function(array.get(index as usize).unwrap().clone()));
+                    stack.push(Value::function(array.get(index as usize).unwrap().clone()));
                 }
             }
 
