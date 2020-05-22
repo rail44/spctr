@@ -1,3 +1,4 @@
-{
-  tri: 1
+(i) => {
+  tri: duo * i,
+  duo: i * i
 }

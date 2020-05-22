@@ -47,7 +47,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
             let source = fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
             let token = parser::parse(&source).unwrap().1;
             let stack = get_cmd(&token);
-            vm::run(stack).unwrap()
+            vm::run(&stack).unwrap()
         },
     ))));
 

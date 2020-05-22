@@ -156,7 +156,7 @@ impl CallStack {
     }
 }
 
-pub fn run(program: Vec<Cmd>) -> Result<Value> {
+pub fn run(program: &[Cmd]) -> Result<Value> {
     let mut vm = VM::new();
     vm.run(program)
 }
@@ -171,7 +171,7 @@ impl VM {
         VM { call_stack }
     }
 
-    fn run(&mut self, program: Vec<Cmd>) -> Result<Value> {
+    fn run(&mut self, program: &[Cmd]) -> Result<Value> {
         // dbg!(program.clone());
         let mut i: usize = 0;
         let mut stack: Vec<Value> = Vec::new();
@@ -240,7 +240,7 @@ impl VM {
                     let body_range = body_base..body_base + body_len;
 
                     self.call_stack.push(frame);
-                    stack.push(self.run(program[body_range].to_vec())?);
+                    stack.push(self.run(&program[body_range])?);
                     self.call_stack.pop();
 
                     i = body_base + body_len;
@@ -263,7 +263,7 @@ impl VM {
                 Load(i, depth) => {
                     let args = self.call_stack.parent_nth(depth);
                     let v = args.get(i).unwrap().clone();
-                    stack.push(self.run(v.to_vec())?);
+                    stack.push(self.run(&v)?);
                 }
                 ConstructFunction(len) => {
                     let body_base = i + 1;
@@ -299,7 +299,7 @@ impl VM {
                             }
                             self.call_stack.push(defs);
 
-                            stack.push(self.run(body.to_vec())?);
+                            stack.push(self.run(&body)?);
 
                             self.call_stack = ret_frame;
                         }
@@ -316,7 +316,7 @@ impl VM {
 
                     self.call_stack = call_stack;
 
-                    stack.push(self.run(vec![Cmd::Load(*id, 0)])?);
+                    stack.push(self.run(&[Cmd::Load(*id, 0)])?);
 
                     self.call_stack = ret_frame;
                 }
