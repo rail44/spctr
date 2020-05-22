@@ -131,7 +131,7 @@ impl Value {
 #[derive(Clone, Debug)]
 pub struct CallStack(Option<Rc<(StackFrame, CallStack)>>);
 
-type StackFrame = Vec<Value>;
+type StackFrame = Vec<Rc<[Cmd]>>;
 
 impl CallStack {
     fn push(&mut self, env: StackFrame) {
@@ -162,16 +162,13 @@ pub fn run(program: Vec<Cmd>) -> Result<Value> {
 }
 
 struct VM {
-    label_map: HashMap<usize, Rc<[Cmd]>>,
     call_stack: CallStack,
 }
 
 impl VM {
     fn new() -> VM {
-        let label_map: HashMap<usize, Rc<[Cmd]>> = HashMap::new();
         let call_stack: CallStack = CallStack(None);
         VM {
-            label_map,
             call_stack,
         }
     }
@@ -239,19 +236,25 @@ impl VM {
                     vec.reverse();
                     stack.push(Value::array(Rc::new(vec)));
                 }
-                Label(id, len) => {
-                    let body_base = i + 1;
-                    let body_range = body_base..body_base + len;
-                    self.label_map.insert(id, Rc::from(&program[body_range]));
-                    i += len + 1;
+                Block(ref def_addrs, body_len) => {
+                    let mut frame = Vec::new();
+                    let mut body_base = i + 1;
+                    for addr in def_addrs.iter() {
+                        let body_range = body_base..body_base + addr;
+                        body_base += addr;
+                        frame.push(Rc::from(&program[body_range]));
+                    }
+                    let body_range = body_base..body_base + body_len;
+
+                    self.call_stack.push(frame);
+                    stack.push(self.run(program[body_range].to_vec())?);
+                    self.call_stack.pop();
+
+                    i = body_base + body_len;
                     continue;
                 }
-                LabelAddr(id) => {
-                    let body = self.label_map.get(&id).unwrap();
-                    stack.push(Value::function(Function::Native(
-                        body.clone(),
-                        self.call_stack.clone(),
-                    )));
+                Push(ref v) => {
+                    stack.push(*v.clone());
                 }
                 JumpRel(n) => {
                     i += n;
@@ -267,7 +270,7 @@ impl VM {
                 Load(i, depth) => {
                     let args = self.call_stack.parent_nth(depth);
                     let v = args.get(i).unwrap().clone();
-                    stack.push(v);
+                    stack.push(self.run(v.to_vec())?);
                 }
                 ConstructFunction(len) => {
                     let body_base = i + 1;
@@ -296,7 +299,12 @@ impl VM {
                             let ret_frame = self.call_stack.clone();
 
                             self.call_stack = closure_call_stack;
-                            self.call_stack.push(args);
+
+                            let mut defs = Vec::new();
+                            for arg in args {
+                                defs.push(Rc::from(vec![Cmd::Push(Box::new(arg))]));
+                            }
+                            self.call_stack.push(defs);
 
                             stack.push(self.run(body.to_vec())?);
 
@@ -312,9 +320,15 @@ impl VM {
                     let name = stack.pop().unwrap().into_string()?;
                     let (map, call_stack) = stack.pop().unwrap().into_struct()?;
                     let id = map.get(&*name).unwrap();
+                    let ret_frame = self.call_stack.clone();
 
-                    let body = self.label_map.get(&id).unwrap();
-                    stack.push(Value::function(Function::Native(body.clone(), call_stack)));
+                    self.call_stack = call_stack;
+
+                    stack.push(self.run(vec![Cmd::Load(id.clone(), 0)])?);
+
+                    self.call_stack.pop();
+                    self.call_stack = ret_frame;
+
                 }
                 Index => {
                     let index = stack.pop().unwrap().into_number()?;

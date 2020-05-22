@@ -1,10 +1,11 @@
 use crate::parser;
 use crate::token::*;
 use crate::vm;
-use crate::vm::ForeignFunction;
+use crate::vm::{Value, ForeignFunction};
 use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;
+use std::mem::size_of;
 
 #[derive(Clone, Debug)]
 pub enum Cmd {
@@ -15,15 +16,15 @@ pub enum Cmd {
     Surplus,
     Equal,
     NotEqual,
+    Push(Box<Value>),
     Load(usize, usize),
+    Block(Box<Vec<usize>>, usize),
     NumberConst(f64),
     StringConst(Rc<String>),
     ArrayConst(usize),
     ConstructFunction(usize),
     ForeignFunction(ForeignFunction),
     StructAddr(Rc<HashMap<String, usize>>),
-    Label(usize, usize),
-    LabelAddr(usize),
     JumpRel(usize),
     JumpRelIf(usize),
     Call(usize),
@@ -31,19 +32,14 @@ pub enum Cmd {
     Access,
 }
 
-#[derive(Clone, Debug)]
-pub enum Identifier {
-    Bind(usize),
-    Arg(usize),
-}
-
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
+    dbg!(size_of::<Cmd>());
     let mut translator = Translator::new();
     translator.translate(ast)
 }
 
 struct Translator<'a> {
-    env: HashMap<String, Identifier>,
+    env: HashMap<String, usize>,
     bind_cnt: usize,
     parent: Option<&'a Translator<'a>>,
 }
@@ -60,12 +56,12 @@ impl<'a> Translator<'a> {
     fn fork(&'a self) -> Translator<'a> {
         Translator {
             env: HashMap::new(),
-            bind_cnt: self.bind_cnt,
+            bind_cnt: 0,
             parent: Some(self),
         }
     }
 
-    fn get_bind(&self, name: &str) -> Option<(Identifier, usize)> {
+    fn get_bind(&self, name: &str) -> Option<(usize, usize)> {
         self.env.get(name).map_or_else(
             || {
                 self.parent
@@ -77,45 +73,48 @@ impl<'a> Translator<'a> {
 
     fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
         let mut cmd = Vec::new();
-        {
-            let id = self.bind_cnt;
-            let name = "import";
-            self.env.insert(name.to_string(), Identifier::Bind(id));
+        // {
+        //     let id = self.bind_cnt;
+        //     let name = "import";
+        //     self.env.insert(name.to_string(), Identifier::Block(id));
 
-            self.bind_cnt += 1;
+        //     self.bind_cnt += 1;
 
-            let mut body_cmd = vec![];
+        //     let mut body_cmd = vec![];
 
-            body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
-                |mut args| {
-                    let source =
-                        fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
-                    let token = parser::parse(&source).unwrap().1;
-                    let stack = get_cmd(&token);
-                    vm::run(stack).unwrap()
-                },
-            ))));
+        //     body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
+        //         |mut args| {
+        //             let source =
+        //                 fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
+        //             let token = parser::parse(&source).unwrap().1;
+        //             let stack = get_cmd(&token);
+        //             vm::run(stack).unwrap()
+        //         },
+        //     ))));
 
-            cmd.push(Cmd::Label(id, body_cmd.len()));
-            cmd.append(&mut body_cmd);
-        }
+        //     cmd.push(Cmd::Label(id, body_cmd.len()));
+        //     cmd.append(&mut body_cmd);
+        // }
 
         let mut binds = Vec::new();
         for bind in v.definitions.iter() {
             let id = self.bind_cnt;
-            self.env.insert(bind.0.clone(), Identifier::Bind(id));
+            self.env.insert(bind.0.clone(), id);
 
             self.bind_cnt += 1;
-            binds.push((id, &bind.1));
+            binds.push(&bind.1)
         }
 
-        for (id, body) in binds {
-            let mut body_cmd = self.translate_expression(&body);
-            cmd.push(Cmd::Label(id, body_cmd.len()));
-            cmd.append(&mut body_cmd);
+        let mut bind_cmds = Vec::new();
+        for body in binds {
+            bind_cmds.push(self.translate_expression(&body));
         }
 
-        cmd.append(&mut self.translate_expression(&v.body));
+        let mut body_cmd = self.translate_expression(&v.body);
+
+        cmd.push(Cmd::Block(Box::new(bind_cmds.iter().map(|cmd| cmd.len()).collect()), body_cmd.len()));
+        cmd.append(&mut bind_cmds.into_iter().flatten().collect());
+        cmd.append(&mut body_cmd);
         cmd
     }
 
@@ -205,7 +204,6 @@ impl<'a> Translator<'a> {
                 OperationRight::Access(name) => {
                     cmd.push(Cmd::StringConst(Rc::new(name.clone())));
                     cmd.push(Cmd::Access);
-                    cmd.push(Cmd::Call(0));
                 }
                 OperationRight::Call(args) => {
                     for arg in args {
@@ -235,8 +233,9 @@ impl<'a> Translator<'a> {
             Primary::Function(args, body) => {
                 let mut translator = self.fork();
                 let mut body_cmd = Vec::new();
-                for (i, arg) in args.iter().enumerate() {
-                    translator.env.insert(arg.clone(), Identifier::Arg(i));
+                for arg in args {
+                    translator.env.insert(arg.clone(), translator.bind_cnt);
+                    translator.bind_cnt += 1;
                 }
 
                 body_cmd.append(&mut translator.translate_expression(body));
@@ -247,30 +246,25 @@ impl<'a> Translator<'a> {
                 cmd
             }
             Primary::Struct(definitions) => {
-                let mut translator = self.fork();
                 let mut binds = Vec::new();
-
-                let mut map = HashMap::new();
-
-                let mut cmd = Vec::new();
-                for bind in definitions {
+                let mut translator = self.fork();
+                for bind in definitions.iter() {
                     let id = translator.bind_cnt;
-                    translator.env.insert(bind.0.clone(), Identifier::Bind(id));
-                    map.insert(bind.0.clone(), id);
+                    translator.env.insert(bind.0.clone(), id);
 
                     translator.bind_cnt += 1;
-                    binds.push((id, &bind.1));
+                    binds.push(&bind.1)
                 }
 
-                for (id, body) in binds {
-                    let mut body_cmd = translator.translate_expression(&body);
-
-                    cmd.push(Cmd::Label(id, body_cmd.len()));
-                    cmd.append(&mut body_cmd);
+                let mut bind_cmds = Vec::new();
+                for body in binds {
+                    bind_cmds.push(translator.translate_expression(&body));
                 }
 
-                cmd.push(Cmd::StructAddr(Rc::new(map)));
-
+                let mut cmd = Vec::new();
+                cmd.push(Cmd::Block(Box::new(bind_cmds.iter().map(|cmd| cmd.len()).collect()), 1));
+                cmd.append(&mut bind_cmds.into_iter().flatten().collect());
+                cmd.push(Cmd::StructAddr(Rc::new(translator.env)));
                 cmd
             }
             Primary::Array(items) => {
@@ -288,20 +282,11 @@ impl<'a> Translator<'a> {
     }
 
     fn translate_identifier(&self, name: &str) -> Vec<Cmd> {
-        let id = self
+        let (id, depth) = self
             .get_bind(name)
             .unwrap_or_else(|| panic!("could not find bind by \"{}\"", name));
         let mut cmd = Vec::new();
-
-        match id {
-            (Identifier::Bind(id), _) => {
-                cmd.push(Cmd::LabelAddr(id));
-                cmd.push(Cmd::Call(0));
-            }
-            (Identifier::Arg(id), depth) => {
-                cmd.push(Cmd::Load(id, depth));
-            }
-        };
+        cmd.push(Cmd::Load(id, depth));
         cmd
     }
 }
