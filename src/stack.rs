@@ -1,11 +1,7 @@
-use crate::parser;
 use crate::token::*;
-use crate::vm;
-use crate::vm::{Value, ForeignFunction};
+use crate::vm::{ForeignFunction, Value};
 use std::collections::HashMap;
-use std::fs;
 use std::rc::Rc;
-use std::mem::size_of;
 
 #[derive(Clone, Debug)]
 pub enum Cmd {
@@ -18,7 +14,7 @@ pub enum Cmd {
     NotEqual,
     Push(Box<Value>),
     Load(usize, usize),
-    Block(Box<Vec<usize>>, usize),
+    Block(Vec<usize>, usize),
     NumberConst(f64),
     StringConst(Rc<String>),
     ArrayConst(usize),
@@ -33,7 +29,6 @@ pub enum Cmd {
 }
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
-    dbg!(size_of::<Cmd>());
     let mut translator = Translator::new();
     translator.translate(ast)
 }
@@ -112,7 +107,10 @@ impl<'a> Translator<'a> {
 
         let mut body_cmd = self.translate_expression(&v.body);
 
-        cmd.push(Cmd::Block(Box::new(bind_cmds.iter().map(|cmd| cmd.len()).collect()), body_cmd.len()));
+        cmd.push(Cmd::Block(
+            bind_cmds.iter().map(|cmd| cmd.len()).collect(),
+            body_cmd.len(),
+        ));
         cmd.append(&mut bind_cmds.into_iter().flatten().collect());
         cmd.append(&mut body_cmd);
         cmd
@@ -262,7 +260,10 @@ impl<'a> Translator<'a> {
                 }
 
                 let mut cmd = Vec::new();
-                cmd.push(Cmd::Block(Box::new(bind_cmds.iter().map(|cmd| cmd.len()).collect()), 1));
+                cmd.push(Cmd::Block(
+                    bind_cmds.iter().map(|cmd| cmd.len()).collect(),
+                    1,
+                ));
                 cmd.append(&mut bind_cmds.into_iter().flatten().collect());
                 cmd.push(Cmd::StructAddr(Rc::new(translator.env)));
                 cmd

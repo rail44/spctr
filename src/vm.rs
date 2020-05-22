@@ -174,18 +174,10 @@ impl VM {
     }
 
     fn run(&mut self, program: Vec<Cmd>) -> Result<Value> {
-        dbg!(program.clone());
         let mut i: usize = 0;
         let mut stack: Vec<Value> = Vec::new();
         while program.len() > i {
             use Cmd::*;
-            dbg!(
-                i,
-                program[i].clone(),
-                stack.clone(),
-                self.call_stack.clone()
-            );
-            println!();
             match program[i] {
                 Add => {
                     let r = stack.pop().unwrap().into_number()?;
@@ -308,7 +300,6 @@ impl VM {
 
                             stack.push(self.run(body.to_vec())?);
 
-                            self.call_stack.pop();
                             self.call_stack = ret_frame;
                         }
                         Function::Foreign(func) => {
@@ -326,7 +317,6 @@ impl VM {
 
                     stack.push(self.run(vec![Cmd::Load(id.clone(), 0)])?);
 
-                    self.call_stack.pop();
                     self.call_stack = ret_frame;
 
                 }
