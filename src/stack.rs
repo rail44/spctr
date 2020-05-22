@@ -1,6 +1,9 @@
+use crate::parser;
 use crate::token::*;
+use crate::vm;
 use crate::vm::{ForeignFunction, Value};
 use std::collections::HashMap;
+use std::fs;
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
@@ -30,7 +33,30 @@ pub enum Cmd {
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
-    translator.translate(ast)
+    let mut cmd = Vec::new();
+    let id = translator.bind_cnt;
+    let name = "import";
+    translator.env.insert(name.to_string(), id);
+
+    translator.bind_cnt += 1;
+
+    let mut body_cmd = vec![];
+
+    body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
+        |mut args| {
+            let source = fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
+            let token = parser::parse(&source).unwrap().1;
+            let stack = get_cmd(&token);
+            vm::run(stack).unwrap()
+        },
+    ))));
+
+    let mut main_translator = translator.fork();
+    let mut main_cmd = main_translator.translate(ast);
+    cmd.push(Cmd::Block(vec![body_cmd.len()], main_cmd.len()));
+    cmd.append(&mut body_cmd);
+    cmd.append(&mut main_cmd);
+    cmd
 }
 
 struct Translator<'a> {
@@ -62,34 +88,12 @@ impl<'a> Translator<'a> {
                 self.parent
                     .and_then(|p| p.get_bind(name).map(|(addr, depth)| (addr, depth + 1)))
             },
-            |addr| Some((addr.clone(), 0)),
+            |addr| Some((*addr, 0)),
         )
     }
 
     fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
         let mut cmd = Vec::new();
-        // {
-        //     let id = self.bind_cnt;
-        //     let name = "import";
-        //     self.env.insert(name.to_string(), Identifier::Block(id));
-
-        //     self.bind_cnt += 1;
-
-        //     let mut body_cmd = vec![];
-
-        //     body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
-        //         |mut args| {
-        //             let source =
-        //                 fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
-        //             let token = parser::parse(&source).unwrap().1;
-        //             let stack = get_cmd(&token);
-        //             vm::run(stack).unwrap()
-        //         },
-        //     ))));
-
-        //     cmd.push(Cmd::Label(id, body_cmd.len()));
-        //     cmd.append(&mut body_cmd);
-        // }
 
         let mut binds = Vec::new();
         for bind in v.definitions.iter() {

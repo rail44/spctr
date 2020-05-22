@@ -17,7 +17,7 @@ impl fmt::Debug for ForeignFunction {
 pub struct Value {
     primitive: Primitive,
     field: Rc<HashMap<String, usize>>,
-    call_stack: CallStack
+    call_stack: CallStack,
 }
 
 #[derive(Clone, Debug)]
@@ -168,16 +168,17 @@ struct VM {
 impl VM {
     fn new() -> VM {
         let call_stack: CallStack = CallStack(None);
-        VM {
-            call_stack,
-        }
+        VM { call_stack }
     }
 
     fn run(&mut self, program: Vec<Cmd>) -> Result<Value> {
+        // dbg!(program.clone());
         let mut i: usize = 0;
         let mut stack: Vec<Value> = Vec::new();
         while program.len() > i {
             use Cmd::*;
+            // dbg!(program[i].clone(), stack.clone(), self.call_stack.clone());
+            // println!();
             match program[i] {
                 Add => {
                     let r = stack.pop().unwrap().into_number()?;
@@ -315,10 +316,9 @@ impl VM {
 
                     self.call_stack = call_stack;
 
-                    stack.push(self.run(vec![Cmd::Load(id.clone(), 0)])?);
+                    stack.push(self.run(vec![Cmd::Load(*id, 0)])?);
 
                     self.call_stack = ret_frame;
-
                 }
                 Index => {
                     let index = stack.pop().unwrap().into_number()?;
