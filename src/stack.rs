@@ -43,7 +43,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut body_cmd = vec![];
 
     body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
-        |mut args| {
+        |_, mut args| {
             let source = fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
             let token = parser::parse(&source).unwrap().1;
             let stack = get_cmd(&token);

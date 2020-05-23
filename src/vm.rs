@@ -5,7 +5,7 @@ use std::fmt;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub struct ForeignFunction(pub Rc<dyn Fn(Vec<Value>) -> Value>);
+pub struct ForeignFunction(pub Rc<dyn Fn(&CallStack, Vec<Value>) -> Value>);
 
 impl fmt::Debug for ForeignFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -82,11 +82,25 @@ impl Value {
         }
     }
 
-    pub fn string(s: Rc<String>) -> Value {
+    pub fn string(v: Rc<String>) -> Value {
+        let mut field = HashMap::new();
+        field.insert("append".to_string(), 0_usize);
+        let mut frame = Vec::new();
+
+        let cloned = v.clone();
+        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
+            let dst = args.pop().unwrap().into_string().unwrap();
+            let v = format!("{}{}", v, dst);
+            Value::string(Rc::new(v))
+        })))]));
+
+        let mut cs = CallStack(None);
+        cs.push(frame);
+
         Value {
-            primitive: Primitive::String(s),
-            field: Rc::new(HashMap::new()),
-            call_stack: CallStack(None),
+            primitive: Primitive::String(cloned),
+            field: Rc::new(field),
+            call_stack: cs
         }
     }
 
@@ -105,18 +119,26 @@ impl Value {
         }
     }
 
-    pub fn into_struct(self) -> Result<(Rc<HashMap<String, usize>>, CallStack)> {
-        match self.primitive {
-            Primitive::Struct => Ok((self.field, self.call_stack)),
-            _ => Err(anyhow!("{:?} is not struct", self.primitive)),
-        }
-    }
-
     pub fn array(v: Rc<Vec<Function>>) -> Value {
+        let mut field = HashMap::new();
+        field.insert("append".to_string(), 0_usize);
+        let mut frame = Vec::new();
+
+        let cloned = v.clone();
+        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
+            let mut v = (*v).clone();
+            let dst = args.pop().unwrap().into_array().unwrap();
+            v.append(&mut (*dst).clone());
+            Value::array(Rc::new(v))
+        })))]));
+
+        let mut cs = CallStack(None);
+        cs.push(frame);
+
         Value {
-            primitive: Primitive::Array(v),
-            field: Rc::new(HashMap::new()),
-            call_stack: CallStack(None),
+            primitive: Primitive::Array(cloned),
+            field: Rc::new(field),
+            call_stack: cs
         }
     }
 
@@ -135,13 +157,11 @@ type StackFrame = Vec<Rc<[Cmd]>>;
 
 impl CallStack {
     fn push(&mut self, env: StackFrame) {
-        let this = CallStack(self.0.take());
-        self.0 = Some(Rc::new((env, this)));
+        self.0.replace(Rc::new((env, self.clone())));
     }
 
     fn pop(&mut self) -> StackFrame {
-        let this = CallStack(self.0.take());
-        let rc = this.0.unwrap();
+        let rc = self.0.take().unwrap();
         let (head, tail) = Rc::try_unwrap(rc).unwrap_or_else(|rc| (*rc).clone());
         *self = tail;
         head
@@ -304,13 +324,15 @@ impl VM {
                             self.call_stack = ret_frame;
                         }
                         Function::Foreign(func) => {
-                            stack.push(func.0(args));
+                            stack.push(func.0(&self.call_stack, args));
                         }
                     }
                 }
                 Access => {
                     let name = stack.pop().unwrap().into_string()?;
-                    let (map, call_stack) = stack.pop().unwrap().into_struct()?;
+                    let target = stack.pop().unwrap();
+                    let map = target.field;
+                    let call_stack = target.call_stack;
                     let id = map.get(&*name).unwrap();
                     let ret_frame = self.call_stack.clone();
 
