@@ -1,7 +1,7 @@
 use crate::parser;
 use crate::token::*;
 use crate::vm;
-use crate::vm::{ForeignFunction, Value};
+use crate::vm::ForeignFunction;
 use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;
@@ -15,7 +15,6 @@ pub enum Cmd {
     Surplus,
     Equal,
     NotEqual,
-    Push(Box<Value>),
     Load(usize, usize),
     Block(Vec<usize>, usize),
     NumberConst(f64),

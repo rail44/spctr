@@ -1,9 +1,9 @@
 use crate::stack::Cmd;
 use anyhow::{anyhow, Result};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 #[derive(Clone)]
 pub struct ForeignFunction(pub Rc<dyn Fn(&CallStack, Vec<Value>) -> Value>);
@@ -36,10 +36,14 @@ impl fmt::Display for Value {
             Primitive::Struct => {
                 let mut vm = VM::new();
                 vm.call_stack = self.call_stack.clone();
-                let fmt_entries: Vec<_> = self.field.iter().map(|(k, v)| {
-                    let v = vm.run(&[Cmd::Load(*v, 0)]).unwrap();
-                    format!("{}: {}", k, v)
-                }).collect();
+                let fmt_entries: Vec<_> = self
+                    .field
+                    .iter()
+                    .map(|(k, v)| {
+                        let v = vm.run(&[Cmd::Load(*v, 0)]).unwrap();
+                        format!("{}: {}", k, v)
+                    })
+                    .collect();
                 write!(f, "{{{}}}", fmt_entries.join(", "))
             }
         }
@@ -140,13 +144,13 @@ impl Value {
         let mut frame = Vec::new();
 
         let cloned = v.clone();
-        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(Function::Foreign(ForeignFunction(
-            Rc::new(move |_, mut args| {
+        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
+            Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
                 let dst = args.pop().unwrap().into_string().unwrap();
                 let v = format!("{}{}", v, dst);
                 Value::string(Rc::new(v))
-            }),
-        )))))));
+            }))),
+        )))));
 
         let mut cs = CallStack(None);
         cs.push(frame);
@@ -180,25 +184,25 @@ impl Value {
         let mut frame = Vec::new();
 
         let cloned = v.clone();
-        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(Function::Foreign(ForeignFunction(
-            Rc::new(move |_, mut args| {
+        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
+            Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
                 let mut v = (*v).clone();
                 let dst = args.pop().unwrap().into_list().unwrap();
                 v.append(&mut (*dst).clone());
                 Value::list(Rc::new(v))
-            }),
-        )))))));
+            }))),
+        )))));
         let v = cloned;
 
         let cloned = v.clone();
-        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(Function::Foreign(ForeignFunction(
-            Rc::new(move |_, mut args| {
+        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
+            Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
                 let mut v = (*v).clone();
                 let dst = args.pop().unwrap().into_list().unwrap();
                 v.append(&mut (*dst).clone());
                 Value::list(Rc::new(v))
-            }),
-        )))))));
+            }))),
+        )))));
         let v = cloned;
 
         let mut cs = CallStack(None);
@@ -323,7 +327,9 @@ impl VM {
                     for addr in def_addrs.iter() {
                         let body_range = body_base..body_base + addr;
                         body_base += addr;
-                        frame.push(Rc::new(RefCell::new(Bind::Cmd(program[body_range].to_vec()))));
+                        frame.push(Rc::new(RefCell::new(Bind::Cmd(
+                            program[body_range].to_vec(),
+                        ))));
                     }
                     let body_range = body_base..body_base + body_len;
 
@@ -333,9 +339,6 @@ impl VM {
 
                     i = body_base + body_len;
                     continue;
-                }
-                Push(ref v) => {
-                    stack.push(*v.clone());
                 }
                 JumpRel(n) => {
                     i += n;

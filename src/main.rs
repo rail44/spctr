@@ -3,9 +3,9 @@ mod stack;
 mod token;
 mod vm;
 
+use crate::vm::Value;
 use anyhow::{anyhow, Result};
 use clap::{App, Arg};
-use crate::vm::Value;
 
 use std::fs;
 
