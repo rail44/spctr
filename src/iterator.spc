@@ -1,64 +1,86 @@
-Iterator: (target) => {
-  to_list: reduce([], (list, el) => list.concat([el])),
-
-  map: (fn) => {
-    inner: (target) => {
-      next: {
-        if target.next = null
-          null
-
-        [
-          inner(target.next[0]),
-          fn(target.next[1])
-        ]
-      }
-    },
-
-    Iterator(inner(target))
-  },
-
-  reduce: (initial, fn) => {
-    inner: (target, acc) => {
-      if target.next = null
-        acc
-
-      inner(target.next[0], fn(acc, target.next[1]))
-    },
-
-    inner(target, initial)
-  },
-
-  find: (fn) => {
-    inner: (target) => {
-      if target.next = null
+Iterator: {
+  range: (from, to) => {
+    inner: (i) => () => {
+      if i = to {
         null
+      }
 
-      if fn(target.next[1])
-        target.next[1]
-
-      inner(target.next[0])
+      [
+        inner(i + 1),
+        i
+      ]
     },
 
-    inner(target)
+    Iterator.new(inner(from))
   },
 
-  filter: (fn) => {
-    inner: (target) => {
-      next: {
-        if target.next = null
-          null
+  new: (target) => {
+    to_list: reduce([], (list, el) => list.concat([el])),
 
-        if fn(target.next[1])
+    map: (fn) => {
+      inner: (target) => {
+        next: target(),
+        () => {
+          if next = null
+              null
+
           [
-            inner(target.next[0]),
-            target.next[1]
+            inner(next[0]),
+            fn(next[1])
           ]
+        }
+      },
 
-        inner(target.next[0]).next
-      }
+      Iterator.new(inner(target))
     },
 
-    Iterator(inner(target))
+    reduce: (initial, fn) => {
+      inner: (target, acc) => {
+        next: target(),
+
+        if next = null
+          acc
+
+        inner(next[0], fn(acc, next[1]))
+      },
+
+      inner(target, initial)
+    },
+
+    find: (fn) => {
+      inner: (target) => {
+        next: target(),
+        if next = null
+          null
+
+        if fn(next[1])
+          next[1]
+
+        inner(next[0])
+      },
+
+      inner(target)
+    },
+
+    filter: (fn) => {
+      inner: (target) => {
+        next: target(),
+        () => {
+          if next = null
+            null
+
+          if fn(next[1])
+            [
+              inner(next[0]),
+              next[1]
+            ]
+
+          inner(next[0]).next
+        }
+      },
+
+      Iterator.new(inner(target))
+    }
   }
 },
 

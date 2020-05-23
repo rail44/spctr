@@ -32,6 +32,6 @@ fn eval(input: &str) -> Result<()> {
         .1;
     let cmd = stack::get_cmd(&token);
     let result = vm::run(&cmd)?;
-    dbg!(result);
+    dbg!(result.primitive, result.field);
     Ok(())
 }

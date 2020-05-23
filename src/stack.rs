@@ -20,8 +20,8 @@ pub enum Cmd {
     Block(Vec<usize>, usize),
     NumberConst(f64),
     StringConst(Rc<String>),
-    ArrayConst(usize),
     NullConst,
+    ConstructList(usize),
     ConstructFunction(usize),
     ForeignFunction(ForeignFunction),
     StructAddr(Rc<HashMap<String, usize>>),
@@ -228,7 +228,6 @@ impl<'a> Translator<'a> {
                 OperationRight::Index(arg) => {
                     cmd.append(&mut self.translate_expression(arg));
                     cmd.push(Cmd::Index);
-                    cmd.push(Cmd::Call(0));
                 }
             }
         }
@@ -285,15 +284,13 @@ impl<'a> Translator<'a> {
                 cmd.push(Cmd::StructAddr(Rc::new(translator.env)));
                 cmd
             }
-            Primary::Array(items) => {
+            Primary::List(items) => {
                 let mut cmd = Vec::new();
                 for item in items {
-                    let mut item_cmd = self.translate_expression(item);
-                    cmd.push(Cmd::ConstructFunction(item_cmd.len()));
-                    cmd.append(&mut item_cmd);
+                    cmd.append(&mut self.translate_expression(item));
                 }
 
-                cmd.push(Cmd::ArrayConst(items.len()));
+                cmd.push(Cmd::ConstructList(items.len()));
                 cmd
             }
         }

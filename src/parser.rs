@@ -78,10 +78,10 @@ fn struct_(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::Struct(s)))
 }
 
-fn array(input: &str) -> IResult<&str, Primary> {
+fn list(input: &str) -> IResult<&str, Primary> {
     map(
         delimited(char('['), separated_list(char(','), expression), char(']')),
-        Primary::Array,
+        Primary::List,
     )(input)
 }
 
@@ -91,7 +91,7 @@ fn null(input: &str) -> IResult<&str, Primary> {
 
 fn primary(input: &str) -> IResult<&str, Primary> {
     alt((
-        number, string, block, array, function, struct_, null, variable,
+        number, string, block, list, function, struct_, null, variable,
     ))(input)
 }
 

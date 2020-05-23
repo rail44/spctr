@@ -15,8 +15,8 @@ impl fmt::Debug for ForeignFunction {
 
 #[derive(Clone, Debug)]
 pub struct Value {
-    primitive: Primitive,
-    field: Rc<HashMap<String, usize>>,
+    pub primitive: Primitive,
+    pub field: Rc<HashMap<String, usize>>,
     call_stack: CallStack,
 }
 
@@ -32,7 +32,7 @@ pub enum Primitive {
     Bool(bool),
     String(Rc<String>),
     Function(Function),
-    Array(Rc<Vec<Function>>),
+    List(Rc<Vec<Value>>),
     Null,
     Struct,
 }
@@ -147,35 +147,48 @@ impl Value {
         }
     }
 
-    pub fn array(v: Rc<Vec<Function>>) -> Value {
+    pub fn list(v: Rc<Vec<Value>>) -> Value {
         let mut field = HashMap::new();
         field.insert("concat".to_string(), 0_usize);
+        field.insert("to_iter".to_string(), 1_usize);
         let mut frame = Vec::new();
 
         let cloned = v.clone();
         frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(
             Rc::new(move |_, mut args| {
                 let mut v = (*v).clone();
-                let dst = args.pop().unwrap().into_array().unwrap();
+                let dst = args.pop().unwrap().into_list().unwrap();
                 v.append(&mut (*dst).clone());
-                Value::array(Rc::new(v))
+                Value::list(Rc::new(v))
             }),
         ))]));
+        let v = cloned;
+
+        let cloned = v.clone();
+        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(
+            Rc::new(move |_, mut args| {
+                let mut v = (*v).clone();
+                let dst = args.pop().unwrap().into_list().unwrap();
+                v.append(&mut (*dst).clone());
+                Value::list(Rc::new(v))
+            }),
+        ))]));
+        let v = cloned;
 
         let mut cs = CallStack(None);
         cs.push(frame);
 
         Value {
-            primitive: Primitive::Array(cloned),
+            primitive: Primitive::List(v),
             field: Rc::new(field),
             call_stack: cs,
         }
     }
 
-    pub fn into_array(self) -> Result<Rc<Vec<Function>>> {
+    pub fn into_list(self) -> Result<Rc<Vec<Value>>> {
         match self.primitive {
-            Primitive::Array(v) => Ok(v),
-            _ => Err(anyhow!("{:?} is not array", self.primitive)),
+            Primitive::List(v) => Ok(v),
+            _ => Err(anyhow!("{:?} is not list", self.primitive)),
         }
     }
 }
@@ -214,13 +227,10 @@ impl VM {
     }
 
     fn run(&mut self, program: &[Cmd]) -> Result<Value> {
-        // dbg!(program.clone());
         let mut i: usize = 0;
         let mut stack: Vec<Value> = Vec::new();
         while program.len() > i {
             use Cmd::*;
-            // dbg!(program[i].clone(), stack.clone(), self.call_stack.clone());
-            // println!();
             match program[i] {
                 Add => {
                     let r = stack.pop().unwrap().into_number()?;
@@ -263,13 +273,14 @@ impl VM {
                 StringConst(ref s) => {
                     stack.push(Value::string(s.clone()));
                 }
-                ArrayConst(len) => {
+                ConstructList(size) => {
                     let mut vec = Vec::new();
-                    for _ in 0..len {
-                        vec.push(stack.pop().unwrap().into_function()?);
+                    for _ in 0..size {
+                        let v = stack.pop().unwrap();
+                        vec.push(v);
                     }
                     vec.reverse();
-                    stack.push(Value::array(Rc::new(vec)));
+                    stack.push(Value::list(Rc::new(vec)));
                 }
                 NullConst => {
                     stack.push(Value::null());
@@ -312,7 +323,7 @@ impl VM {
                         frame = self.call_stack.pop();
                     }
                     self.call_stack.push(frame.clone());
-                    let v = frame.get(i).unwrap().clone();
+                    let v = frame.get(i).expect(&format!("{:#?}, ({:?}, {:?})", ret, i, depth)).clone();
                     stack.push(self.run(&v)?);
                     self.call_stack = ret;
                 }
@@ -337,6 +348,8 @@ impl VM {
                     for _ in 0..arg_len {
                         args.push(stack.pop().unwrap());
                     }
+
+                    args.reverse();
 
                     match stack.pop().unwrap().into_function()? {
                         Function::Native(body, closure_call_stack) => {
@@ -375,8 +388,8 @@ impl VM {
                 }
                 Index => {
                     let index = stack.pop().unwrap().into_number()?;
-                    let array = stack.pop().unwrap().into_array()?;
-                    stack.push(Value::function(array.get(index as usize).unwrap().clone()));
+                    let list = stack.pop().unwrap().into_list()?;
+                    stack.push(list.get(index as usize).unwrap().clone());
                 }
             }
 
