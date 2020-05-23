@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 #[derive(Clone)]
 pub struct ForeignFunction(pub Rc<dyn Fn(&CallStack, Vec<Value>) -> Value>);
@@ -114,13 +115,13 @@ impl Value {
         let mut frame = Vec::new();
 
         let cloned = v.clone();
-        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(
+        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(Function::Foreign(ForeignFunction(
             Rc::new(move |_, mut args| {
                 let dst = args.pop().unwrap().into_string().unwrap();
                 let v = format!("{}{}", v, dst);
                 Value::string(Rc::new(v))
             }),
-        ))]));
+        )))))));
 
         let mut cs = CallStack(None);
         cs.push(frame);
@@ -154,25 +155,25 @@ impl Value {
         let mut frame = Vec::new();
 
         let cloned = v.clone();
-        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(
+        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(Function::Foreign(ForeignFunction(
             Rc::new(move |_, mut args| {
                 let mut v = (*v).clone();
                 let dst = args.pop().unwrap().into_list().unwrap();
                 v.append(&mut (*dst).clone());
                 Value::list(Rc::new(v))
             }),
-        ))]));
+        )))))));
         let v = cloned;
 
         let cloned = v.clone();
-        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(
+        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(Function::Foreign(ForeignFunction(
             Rc::new(move |_, mut args| {
                 let mut v = (*v).clone();
                 let dst = args.pop().unwrap().into_list().unwrap();
                 v.append(&mut (*dst).clone());
                 Value::list(Rc::new(v))
             }),
-        ))]));
+        )))))));
         let v = cloned;
 
         let mut cs = CallStack(None);
@@ -194,9 +195,15 @@ impl Value {
 }
 
 #[derive(Clone, Debug)]
+pub enum Bind {
+    Cmd(Vec<Cmd>),
+    Evalueated(Value),
+}
+
+#[derive(Clone, Debug)]
 pub struct CallStack(Option<Rc<(StackFrame, CallStack)>>);
 
-type StackFrame = Vec<Rc<[Cmd]>>;
+type StackFrame = Vec<Rc<RefCell<Bind>>>;
 
 impl CallStack {
     fn push(&mut self, env: StackFrame) {
@@ -291,7 +298,7 @@ impl VM {
                     for addr in def_addrs.iter() {
                         let body_range = body_base..body_base + addr;
                         body_base += addr;
-                        frame.push(Rc::from(&program[body_range]));
+                        frame.push(Rc::new(RefCell::new(Bind::Cmd(program[body_range].to_vec()))));
                     }
                     let body_range = body_base..body_base + body_len;
 
@@ -323,8 +330,17 @@ impl VM {
                         frame = self.call_stack.pop();
                     }
                     self.call_stack.push(frame.clone());
-                    let v = frame.get(i).expect(&format!("{:#?}, ({:?}, {:?})", ret, i, depth)).clone();
-                    stack.push(self.run(&v)?);
+                    let bind = frame.get(i).unwrap();
+                    let inner = bind.try_borrow()?.clone();
+                    let v = match inner {
+                        Bind::Evalueated(v) => v,
+                        Bind::Cmd(cmd) => {
+                            let v = self.run(&cmd)?;
+                            *bind.try_borrow_mut()? = Bind::Evalueated(v.clone());
+                            v
+                        }
+                    };
+                    stack.push(v);
                     self.call_stack = ret;
                 }
                 ConstructFunction(len) => {
@@ -359,7 +375,7 @@ impl VM {
 
                             let mut defs = Vec::new();
                             for arg in args {
-                                defs.push(Rc::from(vec![Cmd::Push(Box::new(arg))]));
+                                defs.push(Rc::new(RefCell::new(Bind::Evalueated(arg))));
                             }
                             self.call_stack.push(defs);
 
