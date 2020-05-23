@@ -20,6 +20,12 @@ pub struct Value {
     call_stack: CallStack,
 }
 
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        self.primitive == other.primitive
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Primitive {
     Number(f64),
@@ -29,6 +35,17 @@ pub enum Primitive {
     Array(Rc<Vec<Function>>),
     Null,
     Struct,
+}
+
+impl PartialEq for Primitive {
+    fn eq(&self, other: &Self) -> bool {
+        use Primitive::*;
+        match (self, other) {
+            (Number(a), Number(b)) => (a - b).abs() < f64::EPSILON,
+            (Null, Null) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -179,14 +196,6 @@ impl CallStack {
         *self = tail;
         head
     }
-
-    fn parent_nth(&self, n: usize) -> &StackFrame {
-        let rc = self.0.as_ref().unwrap();
-        if n == 0 {
-            return &rc.0;
-        }
-        rc.1.parent_nth(n - 1)
-    }
 }
 
 pub fn run(program: &[Cmd]) -> Result<Value> {
@@ -239,14 +248,14 @@ impl VM {
                     stack.push(Value::number(l % r));
                 }
                 Equal => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::bool((l - r).abs() < f64::EPSILON));
+                    let r = stack.pop().unwrap();
+                    let l = stack.pop().unwrap();
+                    stack.push(Value::bool(r == l));
                 }
                 NotEqual => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::bool((l - r).abs() > f64::EPSILON));
+                    let r = stack.pop().unwrap();
+                    let l = stack.pop().unwrap();
+                    stack.push(Value::bool(r != l));
                 }
                 NumberConst(n) => {
                     stack.push(Value::number(n));
@@ -297,9 +306,15 @@ impl VM {
                     }
                 }
                 Load(i, depth) => {
-                    let args = self.call_stack.parent_nth(depth);
-                    let v = args.get(i).unwrap().clone();
+                    let ret = self.call_stack.clone();
+                    let mut frame = self.call_stack.pop();
+                    for _ in 0..depth {
+                        frame = self.call_stack.pop();
+                    }
+                    self.call_stack.push(frame.clone());
+                    let v = frame.get(i).unwrap().clone();
                     stack.push(self.run(&v)?);
+                    self.call_stack = ret;
                 }
                 ConstructFunction(len) => {
                     let body_base = i + 1;

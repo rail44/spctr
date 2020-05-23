@@ -1,4 +1,4 @@
-(target) => {
+Iterator: (target) => {
   to_list: reduce([], (list, el) => list.concat([el])),
 
   map: (fn) => {
@@ -60,4 +60,6 @@
 
     Iterator(inner(target))
   }
-}
+},
+
+Iterator

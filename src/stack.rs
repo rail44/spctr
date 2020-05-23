@@ -35,15 +35,19 @@ pub enum Cmd {
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
     let mut cmd = Vec::new();
+
     let id = translator.bind_cnt;
     let name = "import";
     translator.env.insert(name.to_string(), id);
-
     translator.bind_cnt += 1;
 
-    let mut body_cmd = vec![];
+    let id = translator.bind_cnt;
+    let name = "Iterator";
+    translator.env.insert(name.to_string(), id);
+    translator.bind_cnt += 1;
 
-    body_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
+    let mut import_cmd = vec![];
+    import_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
         |_, mut args| {
             let source = fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
             let token = parser::parse(&source).unwrap().1;
@@ -52,10 +56,17 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
         },
     ))));
 
-    let mut main_translator = translator.fork();
-    let mut main_cmd = main_translator.translate(ast);
-    cmd.push(Cmd::Block(vec![body_cmd.len()], main_cmd.len()));
-    cmd.append(&mut body_cmd);
+    let token = parser::parse("import(\"src/iterator.spc\")").unwrap().1;
+    let mut iterator = &mut translator.fork().translate(&token);
+
+    let mut translator = translator.fork();
+    let mut main_cmd = translator.translate(ast);
+    cmd.push(Cmd::Block(
+        vec![import_cmd.len(), iterator.len()],
+        main_cmd.len(),
+    ));
+    cmd.append(&mut import_cmd);
+    cmd.append(&mut iterator);
     cmd.append(&mut main_cmd);
     cmd
 }
