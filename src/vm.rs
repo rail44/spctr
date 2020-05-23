@@ -88,11 +88,13 @@ impl Value {
         let mut frame = Vec::new();
 
         let cloned = v.clone();
-        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
-            let dst = args.pop().unwrap().into_string().unwrap();
-            let v = format!("{}{}", v, dst);
-            Value::string(Rc::new(v))
-        })))]));
+        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(
+            Rc::new(move |_, mut args| {
+                let dst = args.pop().unwrap().into_string().unwrap();
+                let v = format!("{}{}", v, dst);
+                Value::string(Rc::new(v))
+            }),
+        ))]));
 
         let mut cs = CallStack(None);
         cs.push(frame);
@@ -100,7 +102,7 @@ impl Value {
         Value {
             primitive: Primitive::String(cloned),
             field: Rc::new(field),
-            call_stack: cs
+            call_stack: cs,
         }
     }
 
@@ -125,12 +127,14 @@ impl Value {
         let mut frame = Vec::new();
 
         let cloned = v.clone();
-        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
-            let mut v = (*v).clone();
-            let dst = args.pop().unwrap().into_array().unwrap();
-            v.append(&mut (*dst).clone());
-            Value::array(Rc::new(v))
-        })))]));
+        frame.push(Rc::from(vec![Cmd::ForeignFunction(ForeignFunction(
+            Rc::new(move |_, mut args| {
+                let mut v = (*v).clone();
+                let dst = args.pop().unwrap().into_array().unwrap();
+                v.append(&mut (*dst).clone());
+                Value::array(Rc::new(v))
+            }),
+        ))]));
 
         let mut cs = CallStack(None);
         cs.push(frame);
@@ -138,7 +142,7 @@ impl Value {
         Value {
             primitive: Primitive::Array(cloned),
             field: Rc::new(field),
-            call_stack: cs
+            call_stack: cs,
         }
     }
 
