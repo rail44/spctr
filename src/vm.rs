@@ -21,6 +21,31 @@ pub struct Value {
     call_stack: CallStack,
 }
 
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.primitive {
+            Primitive::Number(n) => write!(f, "{}", n),
+            Primitive::String(ref s) => write!(f, "\"{}\"", s),
+            Primitive::Bool(b) => write!(f, "{}", b),
+            Primitive::Function(_) => write!(f, "function"),
+            Primitive::List(ref v) => {
+                let fmt_values: Vec<_> = v.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "[{}]", fmt_values.join(", "))
+            }
+            Primitive::Null => write!(f, "null"),
+            Primitive::Struct => {
+                let mut vm = VM::new();
+                vm.call_stack = self.call_stack.clone();
+                let fmt_entries: Vec<_> = self.field.iter().map(|(k, v)| {
+                    let v = vm.run(&[Cmd::Load(*v, 0)]).unwrap();
+                    format!("{}: {}", k, v)
+                }).collect();
+                write!(f, "{{{}}}", fmt_entries.join(", "))
+            }
+        }
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         self.primitive == other.primitive

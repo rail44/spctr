@@ -1,4 +1,4 @@
-l: List.range(0, 2000),
+range: Iterator.range(0, 100),
 
 fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
@@ -9,4 +9,4 @@ fizzbuzz: (i) => {
   fizz.concat(buzz)
 },
 
-l.to_iter.map((i) => [i, fizzbuzz(i)]).to_list
+range.map((i) => [i, fizzbuzz(i)]).to_list

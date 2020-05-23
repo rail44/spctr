@@ -5,6 +5,7 @@ mod vm;
 
 use anyhow::{anyhow, Result};
 use clap::{App, Arg};
+use crate::vm::Value;
 
 use std::fs;
 
@@ -23,15 +24,14 @@ fn main() -> Result<()> {
         }
     };
 
-    eval(&input)
+    println!("{}", eval(&input)?);
+    Ok(())
 }
 
-fn eval(input: &str) -> Result<()> {
+fn eval(input: &str) -> Result<Value> {
     let token = parser::parse(&input)
         .map_err(|s| anyhow!("Parsing failed!, {}", s))?
         .1;
     let cmd = stack::get_cmd(&token);
-    let result = vm::run(&cmd)?;
-    dbg!(result.primitive, result.field);
-    Ok(())
+    vm::run(&cmd)
 }
