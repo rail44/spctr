@@ -77,4 +77,5 @@ pub enum Primary {
     Array(Vec<Expression>),
     Function(Vec<String>, Box<Expression>),
     Struct(Vec<Bind>),
+    Null,
 }

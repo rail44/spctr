@@ -27,6 +27,7 @@ pub enum Primitive {
     String(Rc<String>),
     Function(Function),
     Array(Rc<Vec<Function>>),
+    Null,
     Struct,
 }
 
@@ -40,6 +41,14 @@ impl Value {
     pub fn number(f: f64) -> Value {
         Value {
             primitive: Primitive::Number(f),
+            field: Rc::new(HashMap::new()),
+            call_stack: CallStack(None),
+        }
+    }
+
+    pub fn null() -> Value {
+        Value {
+            primitive: Primitive::Null,
             field: Rc::new(HashMap::new()),
             call_stack: CallStack(None),
         }
@@ -84,7 +93,7 @@ impl Value {
 
     pub fn string(v: Rc<String>) -> Value {
         let mut field = HashMap::new();
-        field.insert("append".to_string(), 0_usize);
+        field.insert("concat".to_string(), 0_usize);
         let mut frame = Vec::new();
 
         let cloned = v.clone();
@@ -123,7 +132,7 @@ impl Value {
 
     pub fn array(v: Rc<Vec<Function>>) -> Value {
         let mut field = HashMap::new();
-        field.insert("append".to_string(), 0_usize);
+        field.insert("concat".to_string(), 0_usize);
         let mut frame = Vec::new();
 
         let cloned = v.clone();
@@ -252,6 +261,9 @@ impl VM {
                     }
                     vec.reverse();
                     stack.push(Value::array(Rc::new(vec)));
+                }
+                NullConst => {
+                    stack.push(Value::null());
                 }
                 Block(ref def_addrs, body_len) => {
                     let mut frame = Vec::new();

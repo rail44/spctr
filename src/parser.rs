@@ -85,8 +85,14 @@ fn array(input: &str) -> IResult<&str, Primary> {
     )(input)
 }
 
+fn null(input: &str) -> IResult<&str, Primary> {
+    map(tag("null"), |_| Primary::Null)(input)
+}
+
 fn primary(input: &str) -> IResult<&str, Primary> {
-    alt((number, string, variable, block, array, function, struct_))(input)
+    alt((
+        number, string, block, array, function, struct_, null, variable,
+    ))(input)
 }
 
 fn access(input: &str) -> IResult<&str, OperationRight> {

@@ -21,6 +21,7 @@ pub enum Cmd {
     NumberConst(f64),
     StringConst(Rc<String>),
     ArrayConst(usize),
+    NullConst,
     ConstructFunction(usize),
     ForeignFunction(ForeignFunction),
     StructAddr(Rc<HashMap<String, usize>>),
@@ -226,6 +227,7 @@ impl<'a> Translator<'a> {
     fn translate_primary(&mut self, v: &Primary) -> Vec<Cmd> {
         match v {
             Primary::Number(v) => vec![Cmd::NumberConst(*v)],
+            Primary::Null => vec![Cmd::NullConst],
             Primary::String(s) => vec![Cmd::StringConst(Rc::new(s.clone()))],
             Primary::Variable(name) => self.translate_identifier(name),
             Primary::Block(statement) => {
