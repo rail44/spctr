@@ -61,9 +61,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
 
     let mut translator = translator.fork();
     let mut main_cmd = translator.translate(ast);
-    cmd.push(Cmd::Block(
-        vec![import_cmd.len(), iterator.len()],
-    ));
+    cmd.push(Cmd::Block(vec![import_cmd.len(), iterator.len()]));
     cmd.append(&mut import_cmd);
     cmd.append(&mut iterator);
     cmd.append(&mut main_cmd);
@@ -123,9 +121,7 @@ impl<'a> Translator<'a> {
 
         let mut body_cmd = self.translate_expression(&v.body);
 
-        cmd.push(Cmd::Block(
-            bind_cmds.iter().map(|cmd| cmd.len()).collect(),
-        ));
+        cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
         cmd.append(&mut bind_cmds.into_iter().flatten().collect());
         cmd.append(&mut body_cmd);
         cmd.push(Cmd::Return);
@@ -276,9 +272,7 @@ impl<'a> Translator<'a> {
                 }
 
                 let mut cmd = Vec::new();
-                cmd.push(Cmd::Block(
-                    bind_cmds.iter().map(|cmd| cmd.len()).collect(),
-                ));
+                cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
                 cmd.append(&mut bind_cmds.into_iter().flatten().collect());
                 cmd.push(Cmd::StructAddr(Rc::new(translator.env)));
                 cmd.push(Cmd::Return);
