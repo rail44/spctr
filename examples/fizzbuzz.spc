@@ -1,4 +1,4 @@
-range: Iterator.range(0, 6000),
+range: Iterator.range(0, 9000),
 
 fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,

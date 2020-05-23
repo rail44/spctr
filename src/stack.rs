@@ -16,7 +16,7 @@ pub enum Cmd {
     Equal,
     NotEqual,
     Load(usize, usize),
-    Block(Vec<usize>, usize),
+    Block(Vec<usize>),
     NumberConst(f64),
     StringConst(Rc<String>),
     NullConst,
@@ -29,6 +29,7 @@ pub enum Cmd {
     Call(usize),
     Index,
     Access,
+    Return,
 }
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
@@ -62,11 +63,11 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut main_cmd = translator.translate(ast);
     cmd.push(Cmd::Block(
         vec![import_cmd.len(), iterator.len()],
-        main_cmd.len(),
     ));
     cmd.append(&mut import_cmd);
     cmd.append(&mut iterator);
     cmd.append(&mut main_cmd);
+    cmd.push(Cmd::Return);
     cmd
 }
 
@@ -124,10 +125,10 @@ impl<'a> Translator<'a> {
 
         cmd.push(Cmd::Block(
             bind_cmds.iter().map(|cmd| cmd.len()).collect(),
-            body_cmd.len(),
         ));
         cmd.append(&mut bind_cmds.into_iter().flatten().collect());
         cmd.append(&mut body_cmd);
+        cmd.push(Cmd::Return);
         cmd
     }
 
@@ -277,10 +278,10 @@ impl<'a> Translator<'a> {
                 let mut cmd = Vec::new();
                 cmd.push(Cmd::Block(
                     bind_cmds.iter().map(|cmd| cmd.len()).collect(),
-                    1,
                 ));
                 cmd.append(&mut bind_cmds.into_iter().flatten().collect());
                 cmd.push(Cmd::StructAddr(Rc::new(translator.env)));
+                cmd.push(Cmd::Return);
                 cmd
             }
             Primary::List(items) => {

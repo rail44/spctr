@@ -321,7 +321,7 @@ impl VM {
                 NullConst => {
                     stack.push(Value::null());
                 }
-                Block(ref def_addrs, body_len) => {
+                Block(ref def_addrs) => {
                     let mut frame = Vec::new();
                     let mut body_base = i + 1;
                     for addr in def_addrs.iter() {
@@ -331,14 +331,14 @@ impl VM {
                             program[body_range].to_vec(),
                         ))));
                     }
-                    let body_range = body_base..body_base + body_len;
+                    i = body_base;
 
                     self.call_stack.push(frame);
-                    stack.push(self.run(&program[body_range])?);
-                    self.call_stack.pop();
 
-                    i = body_base + body_len;
                     continue;
+                }
+                Return => {
+                    self.call_stack.pop();
                 }
                 JumpRel(n) => {
                     i += n;
