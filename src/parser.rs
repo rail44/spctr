@@ -162,7 +162,17 @@ fn additive(input: &str) -> IResult<&str, Additive> {
 fn comparison(input: &str) -> IResult<&str, Comparison> {
     let (input, left) = additive(input)?;
     let (input, rights) = fold_many0(
-        pair(alt((tag("="), tag("!="), tag(">"), tag("<"), tag(">="), tag("<="))), additive),
+        pair(
+            alt((
+                tag("="),
+                tag("!="),
+                tag(">"),
+                tag("<"),
+                tag(">="),
+                tag("<="),
+            )),
+            additive,
+        ),
         Vec::new(),
         |mut vec, (op, val)| {
             match op {
@@ -219,10 +229,7 @@ fn if_(input: &str) -> IResult<&str, Expression> {
 }
 
 fn expression(input: &str) -> IResult<&str, Expression> {
-    alt((
-        if_,
-        map(comparison, Expression::Comparison)
-    ))(input)
+    alt((if_, map(comparison, Expression::Comparison)))(input)
 }
 
 pub fn parse(input: &str) -> IResult<&str, AST> {
