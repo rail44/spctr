@@ -71,15 +71,12 @@ fn function(input: &str) -> IResult<&str, Primary> {
 fn string(input: &str) -> IResult<&str, String> {
     map(
         delimited(char('"'), take_until("\""), char('"')),
-        String::from
+        String::from,
     )(input)
 }
 
 fn string_literal(input: &str) -> IResult<&str, Primary> {
-    map(
-        string,
-        Primary::String
-    )(input)
+    map(string, Primary::String)(input)
 }
 
 fn struct_(input: &str) -> IResult<&str, Primary> {
@@ -100,7 +97,14 @@ fn null(input: &str) -> IResult<&str, Primary> {
 
 fn primary(input: &str) -> IResult<&str, Primary> {
     alt((
-        number, string_literal, block, list, function, struct_, null, variable,
+        number,
+        string_literal,
+        block,
+        list,
+        function,
+        struct_,
+        null,
+        variable,
     ))(input)
 }
 
@@ -110,7 +114,7 @@ fn access(input: &str) -> IResult<&str, OperationRight> {
             preceded(char('.'), identifier),
             delimited(char('['), string, char(']')),
         )),
-        OperationRight::Access
+        OperationRight::Access,
     )(input)
 }
 
