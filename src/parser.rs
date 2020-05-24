@@ -32,9 +32,9 @@ fn variable(input: &str) -> IResult<&str, Primary> {
     map(identifier, Primary::Variable)(input)
 }
 
-fn block(input: &str) -> IResult<&str, Primary> {
+fn immediate_block(input: &str) -> IResult<&str, Primary> {
     let (input, s) = delimited(char('{'), statement, char('}'))(input)?;
-    Ok((input, Primary::Block(Box::new(s))))
+    Ok((input, Primary::ImmediateBlock(Box::new(s))))
 }
 
 fn arrow(input: &str) -> IResult<&str, &str> {
@@ -79,9 +79,9 @@ fn string_literal(input: &str) -> IResult<&str, Primary> {
     map(string, Primary::String)(input)
 }
 
-fn struct_(input: &str) -> IResult<&str, Primary> {
+fn block(input: &str) -> IResult<&str, Primary> {
     let (input, s) = delimited(char('{'), definitions, char('}'))(input)?;
-    Ok((input, Primary::Struct(s)))
+    Ok((input, Primary::Block(s)))
 }
 
 fn list(input: &str) -> IResult<&str, Primary> {
@@ -99,10 +99,10 @@ fn primary(input: &str) -> IResult<&str, Primary> {
     alt((
         number,
         string_literal,
-        block,
+        immediate_block,
         list,
         function,
-        struct_,
+        block,
         null,
         variable,
     ))(input)
@@ -162,17 +162,7 @@ fn additive(input: &str) -> IResult<&str, Additive> {
 fn comparison(input: &str) -> IResult<&str, Comparison> {
     let (input, left) = additive(input)?;
     let (input, rights) = fold_many0(
-        pair(
-            alt((
-                tag("="),
-                tag("!="),
-                tag(">"),
-                tag("<"),
-                tag(">="),
-                tag("<="),
-            )),
-            additive,
-        ),
+        pair(alt((tag("="), tag("!="), tag(">"), tag("<"), tag(">="), tag("<="))), additive),
         Vec::new(),
         |mut vec, (op, val)| {
             match op {
@@ -229,7 +219,10 @@ fn if_(input: &str) -> IResult<&str, Expression> {
 }
 
 fn expression(input: &str) -> IResult<&str, Expression> {
-    alt((if_, map(comparison, Expression::Comparison)))(input)
+    alt((
+        if_,
+        map(comparison, Expression::Comparison)
+    ))(input)
 }
 
 pub fn parse(input: &str) -> IResult<&str, AST> {

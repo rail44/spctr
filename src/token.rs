@@ -77,9 +77,9 @@ pub enum Primary {
     Number(f64),
     String(String),
     Variable(String),
-    Block(Box<Statement>),
+    ImmediateBlock(Box<Statement>),
+    Block(Vec<Bind>),
     List(Vec<Expression>),
     Function(Vec<String>, Box<Expression>),
-    Struct(Vec<Bind>),
     Null,
 }

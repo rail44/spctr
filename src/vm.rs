@@ -33,7 +33,7 @@ impl fmt::Display for Value {
                 write!(f, "[{}]", fmt_values.join(", "))
             }
             Primitive::Null => write!(f, "null"),
-            Primitive::Struct => {
+            Primitive::Block => {
                 let mut vm = VM::new();
                 vm.call_stack = self.call_stack.clone();
                 let fmt_entries: Vec<_> = self
@@ -64,7 +64,7 @@ pub enum Primitive {
     Function(Function),
     List(Rc<Vec<Value>>),
     Null,
-    Struct,
+    Block,
 }
 
 impl PartialEq for Primitive {
@@ -169,9 +169,9 @@ impl Value {
         }
     }
 
-    pub fn struct_(field: Rc<HashMap<String, usize>>, call_stack: CallStack) -> Value {
+    pub fn block(field: Rc<HashMap<String, usize>>, call_stack: CallStack) -> Value {
         Value {
-            primitive: Primitive::Struct,
+            primitive: Primitive::Block,
             field,
             call_stack,
         }
@@ -393,8 +393,8 @@ impl VM {
                 ForeignFunction(ref func) => {
                     stack.push(Value::function(Function::Foreign(func.clone())));
                 }
-                StructAddr(ref map) => {
-                    stack.push(Value::struct_(map.clone(), self.call_stack.clone()));
+                ConstructBlock(ref map) => {
+                    stack.push(Value::block(map.clone(), self.call_stack.clone()));
                 }
                 Call(arg_len) => {
                     let mut args = Vec::new();

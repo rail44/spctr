@@ -24,8 +24,8 @@ pub enum Cmd {
     NullConst,
     ConstructList(usize),
     ConstructFunction(usize),
+    ConstructBlock(Rc<HashMap<String, usize>>),
     ForeignFunction(ForeignFunction),
-    StructAddr(Rc<HashMap<String, usize>>),
     JumpRel(usize),
     JumpRelIf(usize),
     Call(usize),
@@ -259,7 +259,7 @@ impl<'a> Translator<'a> {
             Primary::Null => vec![Cmd::NullConst],
             Primary::String(s) => vec![Cmd::StringConst(Rc::new(s.clone()))],
             Primary::Variable(name) => self.translate_identifier(name),
-            Primary::Block(statement) => {
+            Primary::ImmediateBlock(statement) => {
                 let mut translator = self.fork();
                 translator.translate(statement)
             }
@@ -278,7 +278,7 @@ impl<'a> Translator<'a> {
                 cmd.append(&mut body_cmd);
                 cmd
             }
-            Primary::Struct(definitions) => {
+            Primary::Block(definitions) => {
                 let mut binds = Vec::new();
                 let mut translator = self.fork();
                 for bind in definitions.iter() {
@@ -297,7 +297,7 @@ impl<'a> Translator<'a> {
                 let mut cmd = Vec::new();
                 cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
                 cmd.append(&mut bind_cmds.into_iter().flatten().collect());
-                cmd.push(Cmd::StructAddr(Rc::new(translator.env)));
+                cmd.push(Cmd::ConstructBlock(Rc::new(translator.env)));
                 cmd.push(Cmd::Return);
                 cmd
             }
