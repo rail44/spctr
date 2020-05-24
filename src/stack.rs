@@ -36,34 +36,31 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
     let mut cmd = Vec::new();
 
-    let id = translator.bind_cnt;
-    let name = "import";
-    translator.env.insert(name.to_string(), id);
-    translator.bind_cnt += 1;
+    let stdlib_names = vec!["import", "Iterator"];
+    for name in stdlib_names {
+        let id = translator.bind_cnt;
+        translator.env.insert(name.to_string(), id);
+        translator.bind_cnt += 1;
+    }
 
-    let id = translator.bind_cnt;
-    let name = "Iterator";
-    translator.env.insert(name.to_string(), id);
-    translator.bind_cnt += 1;
+    let mut stdlib_cmds = vec![];
 
-    let mut import_cmd = vec![];
-    import_cmd.push(Cmd::ForeignFunction(ForeignFunction(Rc::new(
+    stdlib_cmds.push(vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(
         |_, mut args| {
             let source = fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
             let token = parser::parse(&source).unwrap().1;
             let stack = get_cmd(&token);
             vm::run(&stack).unwrap()
         },
-    ))));
+    )))]);
 
     let token = parser::parse("import(\"src/iterator.spc\")").unwrap().1;
-    let mut iterator = &mut translator.fork().translate(&token);
+    stdlib_cmds.push(translator.fork().translate(&token));
 
     let mut translator = translator.fork();
     let mut main_cmd = translator.translate(ast);
-    cmd.push(Cmd::Block(vec![import_cmd.len(), iterator.len()]));
-    cmd.append(&mut import_cmd);
-    cmd.append(&mut iterator);
+    cmd.push(Cmd::Block(stdlib_cmds.iter().map(|cmd| cmd.len()).collect()));
+    cmd.append(&mut stdlib_cmds.into_iter().flatten().collect());
     cmd.append(&mut main_cmd);
     cmd.push(Cmd::Return);
     cmd
