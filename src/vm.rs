@@ -27,7 +27,7 @@ impl fmt::Display for Value {
             Primitive::Number(n) => write!(f, "{}", n),
             Primitive::String(ref s) => write!(f, "\"{}\"", s),
             Primitive::Bool(b) => write!(f, "{}", b),
-            Primitive::Function(_) => write!(f, "function"),
+            Primitive::Function(_) => write!(f, "[function]"),
             Primitive::List(ref v) => {
                 let fmt_values: Vec<_> = v.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", fmt_values.join(", "))

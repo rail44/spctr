@@ -68,9 +68,18 @@ fn function(input: &str) -> IResult<&str, Primary> {
     Ok((input, Primary::Function(s.0, Box::new(s.1))))
 }
 
-fn string(input: &str) -> IResult<&str, Primary> {
-    let (input, s) = delimited(char('"'), take_until("\""), char('"'))(input)?;
-    Ok((input, Primary::String(s.to_string())))
+fn string(input: &str) -> IResult<&str, String> {
+    map(
+        delimited(char('"'), take_until("\""), char('"')),
+        String::from
+    )(input)
+}
+
+fn string_literal(input: &str) -> IResult<&str, Primary> {
+    map(
+        string,
+        Primary::String
+    )(input)
 }
 
 fn struct_(input: &str) -> IResult<&str, Primary> {
@@ -91,12 +100,18 @@ fn null(input: &str) -> IResult<&str, Primary> {
 
 fn primary(input: &str) -> IResult<&str, Primary> {
     alt((
-        number, string, block, list, function, struct_, null, variable,
+        number, string_literal, block, list, function, struct_, null, variable,
     ))(input)
 }
 
 fn access(input: &str) -> IResult<&str, OperationRight> {
-    map(preceded(char('.'), identifier), OperationRight::Access)(input)
+    map(
+        alt((
+            preceded(char('.'), identifier),
+            delimited(char('['), string, char(']')),
+        )),
+        OperationRight::Access
+    )(input)
 }
 
 fn operation(input: &str) -> IResult<&str, Operation> {
