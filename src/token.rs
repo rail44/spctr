@@ -28,6 +28,10 @@ pub struct Comparison {
 pub enum ComparisonRight {
     Equal(Additive),
     NotEqual(Additive),
+    GreaterThan(Additive),
+    LessThan(Additive),
+    NotGreaterThan(Additive),
+    NotLessThan(Additive),
 }
 
 #[derive(Clone, Debug)]

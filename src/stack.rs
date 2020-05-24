@@ -14,7 +14,9 @@ pub enum Cmd {
     Mul,
     Surplus,
     Equal,
-    NotEqual,
+    GreaterThan,
+    LessThan,
+    Not,
     Load(usize, usize),
     Block(Vec<usize>),
     NumberConst(f64),
@@ -36,7 +38,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
     let mut cmd = Vec::new();
 
-    let stdlib_names = vec!["import", "Iterator"];
+    let stdlib_names = vec!["import", "Iterator", "http"];
     for name in stdlib_names {
         let id = translator.bind_cnt;
         translator.env.insert(name.to_string(), id);
@@ -55,6 +57,9 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     )))]);
 
     let token = parser::parse("import(\"src/iterator.spc\")").unwrap().1;
+    stdlib_cmds.push(translator.fork().translate(&token));
+
+    let token = parser::parse("import(\"src/http.spc\")").unwrap().1;
     stdlib_cmds.push(translator.fork().translate(&token));
 
     let mut translator = translator.fork();
@@ -159,7 +164,26 @@ impl<'a> Translator<'a> {
                 }
                 ComparisonRight::NotEqual(r) => {
                     cmd.append(&mut self.translate_additive(&r));
-                    cmd.push(Cmd::NotEqual);
+                    cmd.push(Cmd::Equal);
+                    cmd.push(Cmd::Not);
+                }
+                ComparisonRight::GreaterThan(r) => {
+                    cmd.append(&mut self.translate_additive(&r));
+                    cmd.push(Cmd::GreaterThan);
+                }
+                ComparisonRight::LessThan(r) => {
+                    cmd.append(&mut self.translate_additive(&r));
+                    cmd.push(Cmd::LessThan);
+                }
+                ComparisonRight::NotGreaterThan(r) => {
+                    cmd.append(&mut self.translate_additive(&r));
+                    cmd.push(Cmd::GreaterThan);
+                    cmd.push(Cmd::Not);
+                }
+                ComparisonRight::NotLessThan(r) => {
+                    cmd.append(&mut self.translate_additive(&r));
+                    cmd.push(Cmd::LessThan);
+                    cmd.push(Cmd::Not);
                 }
             }
         }

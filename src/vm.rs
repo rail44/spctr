@@ -298,10 +298,19 @@ impl VM {
                     let l = stack.pop().unwrap();
                     stack.push(Value::bool(r == l));
                 }
-                NotEqual => {
-                    let r = stack.pop().unwrap();
-                    let l = stack.pop().unwrap();
-                    stack.push(Value::bool(r != l));
+                Not => {
+                    let b = stack.pop().unwrap().into_bool()?;
+                    stack.push(Value::bool(!b));
+                }
+                Cmd::GreaterThan => {
+                    let r = stack.pop().unwrap().into_number()?;
+                    let l = stack.pop().unwrap().into_number()?;
+                    stack.push(Value::bool(l > r));
+                }
+                Cmd::LessThan => {
+                    let r = stack.pop().unwrap().into_number()?;
+                    let l = stack.pop().unwrap().into_number()?;
+                    stack.push(Value::bool(l < r));
                 }
                 NumberConst(n) => {
                     stack.push(Value::number(n));
