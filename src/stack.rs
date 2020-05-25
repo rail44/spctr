@@ -16,6 +16,7 @@ pub enum Cmd {
     LessThan,
     Not,
     Load(usize, usize),
+    Store(usize),
     Block(Vec<usize>),
     NumberConst(f64),
     StringConst(Rc<String>),
@@ -30,6 +31,7 @@ pub enum Cmd {
     Index,
     Access,
     ExitScope,
+    Return,
 }
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
@@ -46,7 +48,9 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut stdlib_cmds = vec![];
 
     let token = parser::parse(include_str!("iterator.spc")).unwrap().1;
-    stdlib_cmds.push(translator.fork().translate(&token));
+    let mut iterator_cmd = translator.fork().translate(&token);
+    iterator_cmd.push(Cmd::Store(0));
+    stdlib_cmds.push(iterator_cmd);
 
     let mut translator = translator.fork();
     let mut main_cmd = translator.translate(ast);
@@ -101,12 +105,15 @@ impl<'a> Translator<'a> {
             self.env.insert(bind.0.clone(), id);
 
             self.bind_cnt += 1;
-            binds.push(&bind.1)
+            binds.push((id, &bind.1));
         }
 
         let mut bind_cmds = Vec::new();
-        for body in binds {
-            bind_cmds.push(self.translate_expression(&body));
+        for (id, body) in binds {
+            let mut body_cmd = self.translate_expression(&body);
+            body_cmd.push(Cmd::Store(id));
+            body_cmd.push(Cmd::Return);
+            bind_cmds.push(body_cmd);
         }
 
         let mut body_cmd = self.translate_expression(&v.body);
@@ -272,12 +279,15 @@ impl<'a> Translator<'a> {
                     translator.env.insert(bind.0.clone(), id);
 
                     translator.bind_cnt += 1;
-                    binds.push(&bind.1)
+                    binds.push((id, &bind.1))
                 }
 
                 let mut bind_cmds = Vec::new();
-                for body in binds {
-                    bind_cmds.push(translator.translate_expression(&body));
+                for (id, body) in binds {
+                    let mut body_cmd = translator.translate_expression(&body);
+                    body_cmd.push(Cmd::Store(id));
+                    body_cmd.push(Cmd::Return);
+                    bind_cmds.push(body_cmd);
                 }
 
                 let mut cmd = Vec::new();

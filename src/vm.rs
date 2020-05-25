@@ -226,7 +226,7 @@ impl Value {
 
 #[derive(Clone, Debug)]
 pub enum Bind {
-    Cmd(Vec<Cmd>),
+    Cmd(usize),
     Evalueated(Value),
 }
 
@@ -263,12 +263,16 @@ pub fn run(program: &[Cmd]) -> Result<Value> {
 
 struct VM {
     scope: Scope,
+    call_stack: Vec<(usize, Scope)>
 }
 
 impl VM {
     fn new() -> VM {
         let scope: Scope = Scope(None);
-        VM { scope }
+        VM {
+            scope,
+            call_stack: Vec::new()
+        }
     }
 
     fn run(&mut self, program: &[Cmd]) -> Result<Value> {
@@ -370,8 +374,7 @@ impl VM {
                     let mut binds = Vec::new();
                     let mut body_base = i + 1;
                     for addr in def_addrs.iter() {
-                        let range = body_base..body_base + addr;
-                        binds.push(Rc::new(RefCell::new(Bind::Cmd(program[range].to_vec()))));
+                        binds.push(Rc::new(RefCell::new(Bind::Cmd(body_base))));
                         body_base += addr;
                     }
                     i = body_base;
@@ -404,17 +407,36 @@ impl VM {
 
                     let bind = binds.get(n).unwrap();
                     let inner = bind.borrow().clone();
-                    let v = match inner {
-                        Bind::Evalueated(v) => v,
-                        Bind::Cmd(cmd) => {
-                            let ret = mem::replace(&mut self.scope, scope.clone());
-                            let v = self.run(&cmd)?;
-                            *bind.borrow_mut() = Bind::Evalueated(v.clone());
-                            self.scope = ret;
-                            v
+                    match inner {
+                        Bind::Evalueated(v) => {
+                            stack.push(v);
+                            i += 1;
+                            continue;
+                        }
+                        Bind::Cmd(addr) => {
+                            let ret_i = i + 1;
+                            let ret_scope = mem::replace(&mut self.scope, scope.clone());
+
+                            self.call_stack.push((ret_i, ret_scope));
+                            i = addr;
+                            continue;
                         }
                     };
+                }
+                Return => {
+                    let (ret_i, ret_scope) = self.call_stack.pop().unwrap();
+                    i = ret_i;
+                    self.scope = ret_scope;
+                    continue;
+                }
+                Store(n) => {
+                    let v = stack.pop().unwrap();
+                    let binds: &Binds = self.scope.0.as_ref().unwrap().0.as_ref();
+
+                    let bind = binds.get(n).unwrap();
+                    *bind.borrow_mut() = Bind::Evalueated(v.clone());
                     stack.push(v);
+
                     i += 1;
                     continue;
                 }
