@@ -1,9 +1,7 @@
 use crate::parser;
 use crate::token::*;
-use crate::vm;
 use crate::vm::ForeignFunction;
 use std::collections::HashMap;
-use std::fs;
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
@@ -31,14 +29,14 @@ pub enum Cmd {
     Call(usize),
     Index,
     Access,
-    Return,
+    ExitScope,
 }
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
     let mut cmd = Vec::new();
 
-    let stdlib_names = vec!["import", "Iterator", "http"];
+    let stdlib_names = vec!["Iterator"];
     for name in stdlib_names {
         let id = translator.bind_cnt;
         translator.env.insert(name.to_string(), id);
@@ -47,19 +45,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
 
     let mut stdlib_cmds = vec![];
 
-    stdlib_cmds.push(vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(
-        |_, mut args| {
-            let source = fs::read_to_string(&*args.pop().unwrap().into_string().unwrap()).unwrap();
-            let token = parser::parse(&source).unwrap().1;
-            let stack = get_cmd(&token);
-            vm::run(&stack).unwrap()
-        },
-    )))]);
-
-    let token = parser::parse("import(\"src/iterator.spc\")").unwrap().1;
-    stdlib_cmds.push(translator.fork().translate(&token));
-
-    let token = parser::parse("import(\"src/http.spc\")").unwrap().1;
+    let token = parser::parse(include_str!("iterator.spc")).unwrap().1;
     stdlib_cmds.push(translator.fork().translate(&token));
 
     let mut translator = translator.fork();
@@ -69,7 +55,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     ));
     cmd.append(&mut stdlib_cmds.into_iter().flatten().collect());
     cmd.append(&mut main_cmd);
-    cmd.push(Cmd::Return);
+    cmd.push(Cmd::ExitScope);
     cmd
 }
 
@@ -128,7 +114,7 @@ impl<'a> Translator<'a> {
         cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
         cmd.append(&mut bind_cmds.into_iter().flatten().collect());
         cmd.append(&mut body_cmd);
-        cmd.push(Cmd::Return);
+        cmd.push(Cmd::ExitScope);
         cmd
     }
 
@@ -298,7 +284,7 @@ impl<'a> Translator<'a> {
                 cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
                 cmd.append(&mut bind_cmds.into_iter().flatten().collect());
                 cmd.push(Cmd::ConstructBlock(Rc::new(translator.env)));
-                cmd.push(Cmd::Return);
+                cmd.push(Cmd::ExitScope);
                 cmd
             }
             Primary::List(items) => {

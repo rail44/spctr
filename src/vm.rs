@@ -7,7 +7,7 @@ use std::mem;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub struct ForeignFunction(pub Rc<dyn Fn(&CallStack, Vec<Value>) -> Value>);
+pub struct ForeignFunction(pub Rc<dyn Fn(&Scope, Vec<Value>) -> Value>);
 
 impl fmt::Debug for ForeignFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -19,7 +19,7 @@ impl fmt::Debug for ForeignFunction {
 pub struct Value {
     pub primitive: Primitive,
     pub field: Rc<HashMap<String, usize>>,
-    call_stack: CallStack,
+    scope: Scope,
 }
 
 impl fmt::Display for Value {
@@ -36,7 +36,7 @@ impl fmt::Display for Value {
             Primitive::Null => write!(f, "null"),
             Primitive::Block => {
                 let mut vm = VM::new();
-                vm.call_stack = self.call_stack.clone();
+                vm.scope = self.scope.clone();
                 let fmt_entries: Vec<_> = self
                     .field
                     .iter()
@@ -81,7 +81,7 @@ impl PartialEq for Primitive {
 
 #[derive(Clone, Debug)]
 pub enum Function {
-    Native(Rc<[Cmd]>, CallStack),
+    Native(Rc<[Cmd]>, Scope),
     Foreign(ForeignFunction),
 }
 
@@ -90,7 +90,7 @@ impl Value {
         Value {
             primitive: Primitive::Number(f),
             field: Rc::new(HashMap::new()),
-            call_stack: CallStack(None),
+            scope: Scope(None),
         }
     }
 
@@ -98,7 +98,7 @@ impl Value {
         Value {
             primitive: Primitive::Null,
             field: Rc::new(HashMap::new()),
-            call_stack: CallStack(None),
+            scope: Scope(None),
         }
     }
 
@@ -113,7 +113,7 @@ impl Value {
         Value {
             primitive: Primitive::Bool(b),
             field: Rc::new(HashMap::new()),
-            call_stack: CallStack(None),
+            scope: Scope(None),
         }
     }
 
@@ -128,7 +128,7 @@ impl Value {
         Value {
             primitive: Primitive::Function(f),
             field: Rc::new(HashMap::new()),
-            call_stack: CallStack(None),
+            scope: Scope(None),
         }
     }
 
@@ -142,10 +142,10 @@ impl Value {
     pub fn string(v: Rc<String>) -> Value {
         let mut field = HashMap::new();
         field.insert("concat".to_string(), 0_usize);
-        let mut frame = Vec::new();
+        let mut binds = Vec::new();
 
         let cloned = v.clone();
-        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
+        binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
             Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
                 let dst = args.pop().unwrap().into_string().unwrap();
                 let v = format!("{}{}", v, dst);
@@ -153,13 +153,13 @@ impl Value {
             }))),
         )))));
 
-        let mut cs = CallStack(None);
-        cs.push(frame);
+        let mut scope = Scope(None);
+        scope.push(binds);
 
         Value {
             primitive: Primitive::String(cloned),
             field: Rc::new(field),
-            call_stack: cs,
+            scope,
         }
     }
 
@@ -170,11 +170,11 @@ impl Value {
         }
     }
 
-    pub fn block(field: Rc<HashMap<String, usize>>, call_stack: CallStack) -> Value {
+    pub fn block(field: Rc<HashMap<String, usize>>, scope: Scope) -> Value {
         Value {
             primitive: Primitive::Block,
             field,
-            call_stack,
+            scope,
         }
     }
 
@@ -182,10 +182,10 @@ impl Value {
         let mut field = HashMap::new();
         field.insert("concat".to_string(), 0_usize);
         field.insert("to_iter".to_string(), 1_usize);
-        let mut frame = Vec::new();
+        let mut binds = Vec::new();
 
         let cloned = v.clone();
-        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
+        binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
             Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
                 let mut v = (*v).clone();
                 let dst = args.pop().unwrap().into_list().unwrap();
@@ -196,7 +196,7 @@ impl Value {
         let v = cloned;
 
         let cloned = v.clone();
-        frame.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
+        binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
             Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
                 let mut v = (*v).clone();
                 let dst = args.pop().unwrap().into_list().unwrap();
@@ -206,13 +206,13 @@ impl Value {
         )))));
         let v = cloned;
 
-        let mut cs = CallStack(None);
-        cs.push(frame);
+        let mut scope = Scope(None);
+        scope.push(binds);
 
         Value {
             primitive: Primitive::List(v),
             field: Rc::new(field),
-            call_stack: cs,
+            scope,
         }
     }
 
@@ -231,27 +231,27 @@ pub enum Bind {
 }
 
 #[derive(Clone, Debug)]
-pub struct CallStack(Option<Rc<(StackFrame, CallStack)>>);
+pub struct Scope(Option<Rc<(Binds, Scope)>>);
 
-type StackFrame = Vec<Rc<RefCell<Bind>>>;
+type Binds = Vec<Rc<RefCell<Bind>>>;
 
-impl CallStack {
-    fn push(&mut self, env: StackFrame) {
-        self.0 = Some(Rc::new((env, CallStack(self.0.take()))));
+impl Scope {
+    fn push(&mut self, binds: Binds) {
+        self.0 = Some(Rc::new((binds, Scope(self.0.take()))));
     }
 
-    fn pop(&mut self) -> StackFrame {
+    fn pop(&mut self) -> Binds {
         let rc = self.0.take().unwrap();
         let (head, tail) = Rc::try_unwrap(rc).unwrap_or_else(|rc| (*rc).clone());
         *self = tail;
         head
     }
 
-    fn nth_parent(&self, n: usize) -> &CallStack {
+    fn nth_parent(&self, n: usize) -> &Scope {
         if n == 0 {
             return self;
         }
-        let p: &CallStack = &self.0.as_ref().unwrap().1;
+        let p: &Scope = &self.0.as_ref().unwrap().1;
         p.nth_parent(n - 1)
     }
 }
@@ -262,13 +262,15 @@ pub fn run(program: &[Cmd]) -> Result<Value> {
 }
 
 struct VM {
-    call_stack: CallStack,
+    scope: Scope,
 }
 
 impl VM {
     fn new() -> VM {
-        let call_stack: CallStack = CallStack(None);
-        VM { call_stack }
+        let scope: Scope = Scope(None);
+        VM {
+            scope,
+        }
     }
 
     fn run(&mut self, program: &[Cmd]) -> Result<Value> {
@@ -367,23 +369,23 @@ impl VM {
                     continue;
                 }
                 Block(ref def_addrs) => {
-                    let mut frame = Vec::new();
+                    let mut binds = Vec::new();
                     let mut body_base = i + 1;
                     for addr in def_addrs.iter() {
-                        let body_range = body_base..body_base + addr;
-                        body_base += addr;
-                        frame.push(Rc::new(RefCell::new(Bind::Cmd(
-                            program[body_range].to_vec(),
+                        let range = body_base..body_base+addr;
+                        binds.push(Rc::new(RefCell::new(Bind::Cmd(
+                            program[range].to_vec()
                         ))));
+                        body_base += addr;
                     }
                     i = body_base;
 
-                    self.call_stack.push(frame);
+                    self.scope.push(binds);
 
                     continue;
                 }
-                Return => {
-                    self.call_stack.pop();
+                ExitScope => {
+                    self.scope.pop();
                     i += 1;
                     continue;
                 }
@@ -401,23 +403,23 @@ impl VM {
                     continue;
                 }
                 Load(n, depth) => {
-                    let call_stack = self.call_stack.nth_parent(depth).clone();
-                    let frame: &StackFrame = call_stack.0.as_ref().unwrap().0.as_ref();
+                    let scope = self.scope.nth_parent(depth).clone();
+                    let binds: &Binds = scope.0.as_ref().unwrap().0.as_ref();
 
-                    let ret = mem::replace(&mut self.call_stack, call_stack.clone());
 
-                    let bind = frame.get(n).unwrap();
+                    let bind = binds.get(n).unwrap();
                     let inner = bind.borrow().clone();
                     let v = match inner {
                         Bind::Evalueated(v) => v,
                         Bind::Cmd(cmd) => {
+                            let ret = mem::replace(&mut self.scope, scope.clone());
                             let v = self.run(&cmd)?;
                             *bind.borrow_mut() = Bind::Evalueated(v.clone());
+                            self.scope = ret;
                             v
                         }
                     };
                     stack.push(v);
-                    self.call_stack = ret;
                     i += 1;
                     continue;
                 }
@@ -426,7 +428,7 @@ impl VM {
                     let body_range = body_base..body_base + len;
                     stack.push(Value::function(Function::Native(
                         Rc::from(&program[body_range]),
-                        self.call_stack.clone(),
+                        self.scope.clone(),
                     )));
                     i += len + 1;
                     continue;
@@ -437,7 +439,7 @@ impl VM {
                     continue;
                 }
                 ConstructBlock(ref map) => {
-                    stack.push(Value::block(map.clone(), self.call_stack.clone()));
+                    stack.push(Value::block(map.clone(), self.scope.clone()));
                     i += 1;
                     continue;
                 }
@@ -446,21 +448,21 @@ impl VM {
                     let args = stack.split_off(len);
 
                     match stack.pop().unwrap().into_function()? {
-                        Function::Native(body, closure_call_stack) => {
-                            let ret_frame = mem::replace(&mut self.call_stack, closure_call_stack);
+                        Function::Native(body, closure_scope) => {
+                            let ret_scope = mem::replace(&mut self.scope, closure_scope);
 
                             let mut defs = Vec::new();
                             for arg in args {
                                 defs.push(Rc::new(RefCell::new(Bind::Evalueated(arg))));
                             }
-                            self.call_stack.push(defs);
+                            self.scope.push(defs);
 
                             stack.push(self.run(&body)?);
 
-                            self.call_stack = ret_frame;
+                            self.scope = ret_scope;
                         }
                         Function::Foreign(func) => {
-                            stack.push(func.0(&self.call_stack, args));
+                            stack.push(func.0(&self.scope, args));
                         }
                     }
                     i += 1;
@@ -470,13 +472,13 @@ impl VM {
                     let name = stack.pop().unwrap().into_string()?;
                     let target = stack.pop().unwrap();
                     let map = target.field;
-                    let call_stack = target.call_stack;
+                    let scope = target.scope;
                     let id = map.get(&*name).unwrap();
-                    let ret_frame = mem::replace(&mut self.call_stack, call_stack);
+                    let ret_scope = mem::replace(&mut self.scope, scope);
 
                     stack.push(self.run(&[Cmd::Load(*id, 0)])?);
 
-                    self.call_stack = ret_frame;
+                    self.scope = ret_scope;
                     i += 1;
                     continue;
                 }
