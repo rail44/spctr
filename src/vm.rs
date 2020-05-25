@@ -268,9 +268,7 @@ struct VM {
 impl VM {
     fn new() -> VM {
         let scope: Scope = Scope(None);
-        VM {
-            scope,
-        }
+        VM { scope }
     }
 
     fn run(&mut self, program: &[Cmd]) -> Result<Value> {
@@ -372,10 +370,8 @@ impl VM {
                     let mut binds = Vec::new();
                     let mut body_base = i + 1;
                     for addr in def_addrs.iter() {
-                        let range = body_base..body_base+addr;
-                        binds.push(Rc::new(RefCell::new(Bind::Cmd(
-                            program[range].to_vec()
-                        ))));
+                        let range = body_base..body_base + addr;
+                        binds.push(Rc::new(RefCell::new(Bind::Cmd(program[range].to_vec()))));
                         body_base += addr;
                     }
                     i = body_base;
@@ -405,7 +401,6 @@ impl VM {
                 Load(n, depth) => {
                     let scope = self.scope.nth_parent(depth).clone();
                     let binds: &Binds = scope.0.as_ref().unwrap().0.as_ref();
-
 
                     let bind = binds.get(n).unwrap();
                     let inner = bind.borrow().clone();
