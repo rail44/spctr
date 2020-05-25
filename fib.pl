@@ -8,4 +8,4 @@ sub fib
     }
 }
 
-print fib(30);
+print fib(32);

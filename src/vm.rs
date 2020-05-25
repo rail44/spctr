@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::mem;
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -236,7 +237,7 @@ type StackFrame = Vec<Rc<RefCell<Bind>>>;
 
 impl CallStack {
     fn push(&mut self, env: StackFrame) {
-        self.0.replace(Rc::new((env, self.clone())));
+        self.0 = Some(Rc::new((env, CallStack(self.0.take()))));
     }
 
     fn pop(&mut self) -> StackFrame {
@@ -244,6 +245,14 @@ impl CallStack {
         let (head, tail) = Rc::try_unwrap(rc).unwrap_or_else(|rc| (*rc).clone());
         *self = tail;
         head
+    }
+
+    fn nth_parent(&self, n: usize) -> &CallStack {
+        if n == 0 {
+            return self;
+        }
+        let p: &CallStack = &self.0.as_ref().unwrap().1;
+        p.nth_parent(n - 1)
     }
 }
 
@@ -265,58 +274,81 @@ impl VM {
     fn run(&mut self, program: &[Cmd]) -> Result<Value> {
         let mut i: usize = 0;
         let mut stack: Vec<Value> = Vec::new();
-        while program.len() > i {
+        let len = program.len();
+        while len > i {
             use Cmd::*;
             match program[i] {
                 Add => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
                     stack.push(Value::number(l + r));
+                    i += 1;
+                    continue;
                 }
                 Sub => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
                     stack.push(Value::number(l - r));
+                    i += 1;
+                    continue;
                 }
                 Mul => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
                     stack.push(Value::number(l * r));
+                    i += 1;
+                    continue;
                 }
                 Div => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
                     stack.push(Value::number(l / r));
+                    i += 1;
+                    continue;
                 }
                 Surplus => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
                     stack.push(Value::number(l % r));
+                    i += 1;
+                    continue;
                 }
                 Equal => {
                     let r = stack.pop().unwrap();
                     let l = stack.pop().unwrap();
                     stack.push(Value::bool(r == l));
+                    i += 1;
+                    continue;
                 }
                 Not => {
                     let b = stack.pop().unwrap().into_bool()?;
                     stack.push(Value::bool(!b));
+                    i += 1;
+                    continue;
                 }
                 Cmd::GreaterThan => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
                     stack.push(Value::bool(l > r));
+                    i += 1;
+                    continue;
                 }
                 Cmd::LessThan => {
                     let r = stack.pop().unwrap().into_number()?;
                     let l = stack.pop().unwrap().into_number()?;
                     stack.push(Value::bool(l < r));
+                    i += 1;
+                    continue;
                 }
                 NumberConst(n) => {
                     stack.push(Value::number(n));
+                    i += 1;
+                    continue;
                 }
                 StringConst(ref s) => {
                     stack.push(Value::string(s.clone()));
+                    i += 1;
+                    continue;
                 }
                 ConstructList(size) => {
                     let mut vec = Vec::new();
@@ -326,9 +358,13 @@ impl VM {
                     }
                     vec.reverse();
                     stack.push(Value::list(Rc::new(vec)));
+                    i += 1;
+                    continue;
                 }
                 NullConst => {
                     stack.push(Value::null());
+                    i += 1;
+                    continue;
                 }
                 Block(ref def_addrs) => {
                     let mut frame = Vec::new();
@@ -348,6 +384,8 @@ impl VM {
                 }
                 Return => {
                     self.call_stack.pop();
+                    i += 1;
+                    continue;
                 }
                 JumpRel(n) => {
                     i += n;
@@ -359,26 +397,29 @@ impl VM {
                         i += n;
                         continue;
                     }
+                    i += 1;
+                    continue;
                 }
-                Load(i, depth) => {
-                    let ret = self.call_stack.clone();
-                    let mut frame = self.call_stack.pop();
-                    for _ in 0..depth {
-                        frame = self.call_stack.pop();
-                    }
-                    self.call_stack.push(frame.clone());
-                    let bind = frame.get(i).unwrap();
-                    let inner = bind.try_borrow()?.clone();
+                Load(n, depth) => {
+                    let call_stack = self.call_stack.nth_parent(depth).clone();
+                    let frame: &StackFrame = call_stack.0.as_ref().unwrap().0.as_ref();
+
+                    let ret = mem::replace(&mut self.call_stack, call_stack.clone());
+
+                    let bind = frame.get(n).unwrap();
+                    let inner = bind.borrow().clone();
                     let v = match inner {
                         Bind::Evalueated(v) => v,
                         Bind::Cmd(cmd) => {
                             let v = self.run(&cmd)?;
-                            *bind.try_borrow_mut()? = Bind::Evalueated(v.clone());
+                            *bind.borrow_mut() = Bind::Evalueated(v.clone());
                             v
                         }
                     };
                     stack.push(v);
                     self.call_stack = ret;
+                    i += 1;
+                    continue;
                 }
                 ConstructFunction(len) => {
                     let body_base = i + 1;
@@ -392,23 +433,21 @@ impl VM {
                 }
                 ForeignFunction(ref func) => {
                     stack.push(Value::function(Function::Foreign(func.clone())));
+                    i += 1;
+                    continue;
                 }
                 ConstructBlock(ref map) => {
                     stack.push(Value::block(map.clone(), self.call_stack.clone()));
+                    i += 1;
+                    continue;
                 }
                 Call(arg_len) => {
-                    let mut args = Vec::new();
-                    for _ in 0..arg_len {
-                        args.push(stack.pop().unwrap());
-                    }
-
-                    args.reverse();
+                    let len = stack.len() - arg_len;
+                    let args = stack.split_off(len);
 
                     match stack.pop().unwrap().into_function()? {
                         Function::Native(body, closure_call_stack) => {
-                            let ret_frame = self.call_stack.clone();
-
-                            self.call_stack = closure_call_stack;
+                            let ret_frame = mem::replace(&mut self.call_stack, closure_call_stack);
 
                             let mut defs = Vec::new();
                             for arg in args {
@@ -424,6 +463,8 @@ impl VM {
                             stack.push(func.0(&self.call_stack, args));
                         }
                     }
+                    i += 1;
+                    continue;
                 }
                 Access => {
                     let name = stack.pop().unwrap().into_string()?;
@@ -431,22 +472,23 @@ impl VM {
                     let map = target.field;
                     let call_stack = target.call_stack;
                     let id = map.get(&*name).unwrap();
-                    let ret_frame = self.call_stack.clone();
-
-                    self.call_stack = call_stack;
+                    let ret_frame = mem::replace(&mut self.call_stack, call_stack);
 
                     stack.push(self.run(&[Cmd::Load(*id, 0)])?);
 
                     self.call_stack = ret_frame;
+                    i += 1;
+                    continue;
                 }
                 Index => {
                     let index = stack.pop().unwrap().into_number()?;
                     let list = stack.pop().unwrap().into_list()?;
                     stack.push(list.get(index as usize).unwrap().clone());
+
+                    i += 1;
+                    continue;
                 }
             }
-
-            i += 1;
         }
         Ok(stack.pop().unwrap())
     }
