@@ -263,7 +263,7 @@ pub fn run(program: &[Cmd]) -> Result<Value> {
 
 struct VM {
     scope: Scope,
-    call_stack: Vec<(usize, Scope)>
+    call_stack: Vec<(usize, Scope)>,
 }
 
 impl VM {
@@ -271,7 +271,7 @@ impl VM {
         let scope: Scope = Scope(None);
         VM {
             scope,
-            call_stack: Vec::new()
+            call_stack: Vec::new(),
         }
     }
 
