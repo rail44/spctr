@@ -34,7 +34,7 @@ impl fmt::Display for Value {
                 write!(f, "[{}]", fmt_values.join(", "))
             }
             Primitive::Null => write!(f, "null"),
-            Primitive::Block => {
+            Primitive::Block(_) => {
                 let mut vm = VM::new();
                 vm.scope = self.scope.clone();
                 let fmt_entries: Vec<_> = self
@@ -65,7 +65,7 @@ pub enum Primitive {
     Function(Function),
     List(Rc<Vec<Value>>),
     Null,
-    Block,
+    Block(usize),
 }
 
 impl PartialEq for Primitive {
@@ -170,11 +170,18 @@ impl Value {
         }
     }
 
-    pub fn block(field: Rc<HashMap<String, usize>>, scope: Scope) -> Value {
+    pub fn block(i: usize, field: Rc<HashMap<String, usize>>, scope: Scope) -> Value {
         Value {
-            primitive: Primitive::Block,
+            primitive: Primitive::Block(i),
             field,
             scope,
+        }
+    }
+
+    pub fn into_block(self) -> Result<(usize, Rc<HashMap<String, usize>>, Scope)> {
+        match self.primitive {
+            Primitive::Block(addr) => Ok((addr, self.field, self.scope)),
+            _ => Err(anyhow!("{:?} is not block", self.primitive)),
         }
     }
 
@@ -454,9 +461,9 @@ impl VM {
                     i += 1;
                     continue;
                 }
-                ConstructBlock(ref map) => {
-                    stack.push(Value::block(map.clone(), self.scope.clone()));
-                    i += 1;
+                ConstructBlock(len, ref map) => {
+                    stack.push(Value::block(i + 1, map.clone(), self.scope.clone()));
+                    i += 1 + len;
                     continue;
                 }
                 Call(arg_len) => {
@@ -486,16 +493,12 @@ impl VM {
                 }
                 Access => {
                     let name = stack.pop().unwrap().into_string()?;
-                    let target = stack.pop().unwrap();
-                    let map = target.field;
-                    let scope = target.scope;
+                    let (addr, map, scope) = stack.pop().unwrap().into_block()?;
                     let id = map.get(&*name).unwrap();
                     let ret_scope = mem::replace(&mut self.scope, scope);
 
-                    stack.push(self.run(&[Cmd::Load(*id, 0)])?);
-
-                    self.scope = ret_scope;
-                    i += 1;
+                    self.call_stack.push((i + 1, ret_scope));
+                    i = id * 2 + addr;
                     continue;
                 }
                 Index => {

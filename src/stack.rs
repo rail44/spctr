@@ -23,7 +23,7 @@ pub enum Cmd {
     NullConst,
     ConstructList(usize),
     ConstructFunction(usize),
-    ConstructBlock(Rc<HashMap<String, usize>>),
+    ConstructBlock(usize, Rc<HashMap<String, usize>>),
     ForeignFunction(ForeignFunction),
     JumpRel(usize),
     JumpRelIf(usize),
@@ -277,12 +277,17 @@ impl<'a> Translator<'a> {
             Primary::Block(definitions) => {
                 let mut binds = Vec::new();
                 let mut translator = self.fork();
+                let mut load_cmds = Vec::new();
+
                 for bind in definitions.iter() {
                     let id = translator.bind_cnt;
                     translator.env.insert(bind.0.clone(), id);
 
                     translator.bind_cnt += 1;
-                    binds.push((id, &bind.1))
+
+                    load_cmds.push(Cmd::Load(id, 0));
+                    load_cmds.push(Cmd::Return);
+                    binds.push((id, &bind.1));
                 }
 
                 let mut bind_cmds = Vec::new();
@@ -296,7 +301,11 @@ impl<'a> Translator<'a> {
                 let mut cmd = Vec::new();
                 cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
                 cmd.append(&mut bind_cmds.into_iter().flatten().collect());
-                cmd.push(Cmd::ConstructBlock(Rc::new(translator.env)));
+                cmd.push(Cmd::ConstructBlock(
+                    load_cmds.len(),
+                    Rc::new(translator.env),
+                ));
+                cmd.append(&mut load_cmds);
                 cmd.push(Cmd::ExitScope);
                 cmd
             }
