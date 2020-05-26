@@ -1,44 +1,14 @@
 use crate::parser;
 use crate::token::*;
-use crate::vm::ForeignFunction;
+use crate::vm::Cmd;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-#[derive(Clone, Debug)]
-pub enum Cmd {
-    Add,
-    Sub,
-    Div,
-    Mul,
-    Surplus,
-    Equal,
-    GreaterThan,
-    LessThan,
-    Not,
-    Load(usize, usize),
-    Store(usize),
-    Block(Vec<usize>),
-    NumberConst(f64),
-    StringConst(Rc<String>),
-    NullConst,
-    ConstructList(usize),
-    ConstructFunction(usize),
-    ConstructBlock(usize, Rc<HashMap<String, usize>>),
-    ForeignFunction(ForeignFunction),
-    JumpRel(usize),
-    JumpRelIf(usize),
-    Call(usize),
-    Index,
-    Access,
-    ExitScope,
-    Return,
-}
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
     let mut cmd = Vec::new();
 
-    let stdlib_names = vec!["Iterator"];
+    let stdlib_names = vec!["Iterator", "List"];
     for name in stdlib_names {
         let id = translator.bind_cnt;
         translator.env.insert(name.to_string(), id);
