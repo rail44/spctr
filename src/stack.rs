@@ -52,14 +52,15 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     iterator_cmd.push(Cmd::Store(0));
     stdlib_cmds.push(iterator_cmd);
 
-    let mut translator = translator.fork();
-    let mut main_cmd = translator.translate(ast);
     cmd.push(Cmd::Block(
         stdlib_cmds.iter().map(|cmd| cmd.len()).collect(),
     ));
     cmd.append(&mut stdlib_cmds.into_iter().flatten().collect());
+
+    let mut main_cmd = translator.fork().translate(ast);
     cmd.append(&mut main_cmd);
     cmd.push(Cmd::ExitScope);
+
     cmd
 }
 
@@ -265,6 +266,8 @@ impl<'a> Translator<'a> {
                 }
 
                 body_cmd.append(&mut translator.translate_expression(body));
+                body_cmd.push(Cmd::ExitScope);
+                body_cmd.push(Cmd::Return);
 
                 let mut cmd = Vec::new();
                 cmd.push(Cmd::ConstructFunction(body_cmd.len()));

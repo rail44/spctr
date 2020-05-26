@@ -81,7 +81,7 @@ impl PartialEq for Primitive {
 
 #[derive(Clone, Debug)]
 pub enum Function {
-    Native(Rc<[Cmd]>, Scope),
+    Native(usize, Scope),
     Foreign(ForeignFunction),
 }
 
@@ -442,12 +442,11 @@ impl VM {
                 }
                 ConstructFunction(len) => {
                     let body_base = i + 1;
-                    let body_range = body_base..body_base + len;
                     stack.push(Value::function(Function::Native(
-                        Rc::from(&program[body_range]),
+                        body_base,
                         self.scope.clone(),
                     )));
-                    i += len + 1;
+                    i = body_base + len;
                     continue;
                 }
                 ForeignFunction(ref func) => {
@@ -465,7 +464,7 @@ impl VM {
                     let args = stack.split_off(len);
 
                     match stack.pop().unwrap().into_function()? {
-                        Function::Native(body, closure_scope) => {
+                        Function::Native(addr, closure_scope) => {
                             let ret_scope = mem::replace(&mut self.scope, closure_scope);
 
                             let mut defs = Vec::new();
@@ -474,16 +473,16 @@ impl VM {
                             }
                             self.scope.push(defs);
 
-                            stack.push(self.run(&body)?);
-
-                            self.scope = ret_scope;
+                            self.call_stack.push((i + 1, ret_scope));
+                            i = addr;
+                            continue;
                         }
                         Function::Foreign(func) => {
                             stack.push(func.0(&self.scope, args));
+                            i += 1;
+                            continue;
                         }
                     }
-                    i += 1;
-                    continue;
                 }
                 Access => {
                     let name = stack.pop().unwrap().into_string()?;
