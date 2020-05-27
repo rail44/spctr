@@ -1,6 +1,6 @@
 use crate::parser;
 use crate::token::*;
-use crate::vm::Cmd;
+use crate::vm::{Cmd, ForeignFunction, Value};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -8,7 +8,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
     let mut cmd = Vec::new();
 
-    let stdlib_names = vec!["Iterator", "List"];
+    let stdlib_names = vec!["Iterator", "List", "String"];
     for name in stdlib_names {
         let id = translator.bind_cnt;
         translator.env.insert(name.to_string(), id);
@@ -20,7 +20,83 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let token = parser::parse(include_str!("iterator.spc")).unwrap().1;
     let mut iterator_cmd = translator.fork().translate(&token);
     iterator_cmd.push(Cmd::Store(0));
+    iterator_cmd.push(Cmd::Return);
     stdlib_cmds.push(iterator_cmd);
+
+    let mut list_cmd = Vec::new();
+    {
+        let mut translator = translator.fork();
+        let mut field_cmds = Vec::new();
+        let mut load_cmds = Vec::new();
+
+        let field_names = vec!["concat"];
+        for name in field_names {
+            let id = translator.bind_cnt;
+            translator.env.insert(name.to_string(), id);
+            load_cmds.push(Cmd::Load(id, 0));
+            load_cmds.push(Cmd::Return);
+            translator.bind_cnt += 1;
+        }
+
+        field_cmds.push(vec![
+            Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
+                let mut target = (*args.pop().unwrap().into_list().unwrap()).clone();
+                let mut dst = (*args.pop().unwrap().into_list().unwrap()).clone();
+                target.append(&mut dst);
+                Value::list(Rc::new(target))
+            }))),
+            Cmd::Store(0),
+            Cmd::Return,
+        ]);
+        list_cmd.push(Cmd::Block(field_cmds.iter().map(|cmd| cmd.len()).collect()));
+        list_cmd.append(&mut field_cmds.into_iter().flatten().collect());
+        list_cmd.push(Cmd::ConstructBlock(
+            load_cmds.len(),
+            Rc::new(translator.env),
+        ));
+        list_cmd.append(&mut load_cmds);
+        list_cmd.push(Cmd::ExitScope);
+        list_cmd.push(Cmd::Store(1));
+        list_cmd.push(Cmd::Return);
+    }
+    stdlib_cmds.push(list_cmd);
+
+    let mut string_cmd = Vec::new();
+    {
+        let mut translator = translator.fork();
+        let mut field_cmds = Vec::new();
+        let mut load_cmds = Vec::new();
+
+        let field_names = vec!["concat"];
+        for name in field_names {
+            let id = translator.bind_cnt;
+            translator.env.insert(name.to_string(), id);
+            load_cmds.push(Cmd::Load(id, 0));
+            load_cmds.push(Cmd::Return);
+            translator.bind_cnt += 1;
+        }
+
+        field_cmds.push(vec![
+            Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
+                let target = args.pop().unwrap().into_string().unwrap();
+                let dst = args.pop().unwrap().into_string().unwrap();
+                Value::string(Rc::new(format!("{}{}", target, dst)))
+            }))),
+            Cmd::Store(0),
+            Cmd::Return,
+        ]);
+        string_cmd.push(Cmd::Block(field_cmds.iter().map(|cmd| cmd.len()).collect()));
+        string_cmd.append(&mut field_cmds.into_iter().flatten().collect());
+        string_cmd.push(Cmd::ConstructBlock(
+            load_cmds.len(),
+            Rc::new(translator.env),
+        ));
+        string_cmd.append(&mut load_cmds);
+        string_cmd.push(Cmd::ExitScope);
+        string_cmd.push(Cmd::Store(2));
+        string_cmd.push(Cmd::Return);
+    }
+    stdlib_cmds.push(string_cmd);
 
     cmd.push(Cmd::Block(
         stdlib_cmds.iter().map(|cmd| cmd.len()).collect(),

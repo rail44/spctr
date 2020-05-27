@@ -15,7 +15,7 @@ Iterator: {
   },
 
   new: (target) => {
-    to_list: reduce([], (list, el) => list.concat([el])),
+    to_list: reduce([], (list, el) => List.concat(list, [el])),
 
     map: (fn) => {
       inner: (target) => {

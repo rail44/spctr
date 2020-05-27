@@ -56,8 +56,8 @@ impl fmt::Display for Value {
                 write!(f, "[{}]", fmt_values.join(", "))
             }
             Value::Null => write!(f, "null"),
-            Value::Block(_, _, _) => {
-                unimplemented!();
+            Value::Block(_, field, _) => {
+                write!(f, "{:?}", field)
                 // let mut vm = VM::new();
                 // vm.scope = self.scope.clone();
                 // let fmt_entries: Vec<_> = self
@@ -141,22 +141,6 @@ impl Value {
     }
 
     pub fn string(v: Rc<String>) -> Value {
-        // let mut field = HashMap::new();
-        // field.insert("concat".to_string(), 0_usize);
-        // let mut binds = Vec::new();
-
-        // let cloned = v.clone();
-        // binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
-        //     Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
-        //         let dst = args.pop().unwrap().into_string().unwrap();
-        //         let v = format!("{}{}", v, dst);
-        //         Value::string(Rc::new(v))
-        //     }))),
-        // )))));
-
-        // let mut scope = Scope(None);
-        // scope.push(binds);
-
         Value::String(v)
     }
 
@@ -179,36 +163,6 @@ impl Value {
     }
 
     pub fn list(v: Rc<Vec<Value>>) -> Value {
-        // let mut field = HashMap::new();
-        // field.insert("concat".to_string(), 0_usize);
-        // field.insert("to_iter".to_string(), 1_usize);
-        // let mut binds = Vec::new();
-
-        // let cloned = v.clone();
-        // binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
-        //     Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
-        //         let mut v = (*v).clone();
-        //         let dst = args.pop().unwrap().into_list().unwrap();
-        //         v.append(&mut (*dst).clone());
-        //         Value::list(Rc::new(v))
-        //     }))),
-        // )))));
-        // let v = cloned;
-
-        // let cloned = v.clone();
-        // binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
-        //     Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
-        //         let mut v = (*v).clone();
-        //         let dst = args.pop().unwrap().into_list().unwrap();
-        //         v.append(&mut (*dst).clone());
-        //         Value::list(Rc::new(v))
-        //     }))),
-        // )))));
-        // let v = cloned;
-
-        // let mut scope = Scope(None);
-        // scope.push(binds);
-
         Value::List(v)
     }
 
@@ -515,7 +469,7 @@ impl VM {
 
     fn call(&mut self, arg_len: usize) -> Result<()> {
         let len = self.stack.len() - arg_len;
-        let args = self.stack.split_off(len);
+        let mut args = self.stack.split_off(len);
 
         match self.stack.pop().unwrap().into_function()? {
             Function::Native(addr, closure_scope) => {
@@ -532,6 +486,7 @@ impl VM {
                 return Ok(());
             }
             Function::Foreign(func) => {
+                args.reverse();
                 self.stack.push(func.0(&self.scope, args));
                 self.i += 1;
                 return Ok(());
