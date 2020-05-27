@@ -1,10 +1,39 @@
-use crate::stack::Cmd;
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::mem;
 use std::rc::Rc;
+
+#[derive(Clone, Debug)]
+pub enum Cmd {
+    Add,
+    Sub,
+    Div,
+    Mul,
+    Surplus,
+    Equal,
+    GreaterThan,
+    LessThan,
+    Not,
+    Load(usize, usize),
+    Store(usize),
+    Block(Vec<usize>),
+    NumberConst(f64),
+    StringConst(Rc<String>),
+    NullConst,
+    ConstructList(usize),
+    ConstructFunction(usize),
+    ConstructBlock(usize, Rc<HashMap<String, usize>>),
+    ForeignFunction(ForeignFunction),
+    JumpRel(usize),
+    JumpRelIf(usize),
+    Call(usize),
+    Index,
+    Access,
+    ExitScope,
+    Return,
+}
 
 #[derive(Clone)]
 pub struct ForeignFunction(pub Rc<dyn Fn(&Scope, Vec<Value>) -> Value>);
@@ -15,62 +44,50 @@ impl fmt::Debug for ForeignFunction {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Value {
-    pub primitive: Primitive,
-    pub field: Rc<HashMap<String, usize>>,
-    scope: Scope,
-}
-
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.primitive {
-            Primitive::Number(n) => write!(f, "{}", n),
-            Primitive::String(ref s) => write!(f, "\"{}\"", s),
-            Primitive::Bool(b) => write!(f, "{}", b),
-            Primitive::Function(_) => write!(f, "[function]"),
-            Primitive::List(ref v) => {
+        match self {
+            Value::Number(n) => write!(f, "{}", n),
+            Value::String(ref s) => write!(f, "\"{}\"", s),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Function(_) => write!(f, "[function]"),
+            Value::List(ref v) => {
                 let fmt_values: Vec<_> = v.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", fmt_values.join(", "))
             }
-            Primitive::Null => write!(f, "null"),
-            Primitive::Block => {
-                let mut vm = VM::new();
-                vm.scope = self.scope.clone();
-                let fmt_entries: Vec<_> = self
-                    .field
-                    .iter()
-                    .map(|(k, v)| {
-                        let v = vm.run(&[Cmd::Load(*v, 0)]).unwrap();
-                        format!("{}: {}", k, v)
-                    })
-                    .collect();
-                write!(f, "{{{}}}", fmt_entries.join(", "))
+            Value::Null => write!(f, "null"),
+            Value::Block(_, field, _) => {
+                write!(f, "{:?}", field)
+                // let mut vm = VM::new();
+                // vm.scope = self.scope.clone();
+                // let fmt_entries: Vec<_> = self
+                //     .field
+                //     .iter()
+                //     .map(|(k, v)| {
+                //         let v = vm.run(&[Cmd::Load(*v, 0)]).unwrap();
+                //         format!("{}: {}", k, v)
+                //     })
+                //     .collect();
+                // write!(f, "{{{}}}", fmt_entries.join(", "))
             }
         }
     }
 }
 
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        self.primitive == other.primitive
-    }
-}
-
 #[derive(Clone, Debug)]
-pub enum Primitive {
+pub enum Value {
     Number(f64),
     Bool(bool),
     String(Rc<String>),
     Function(Function),
     List(Rc<Vec<Value>>),
     Null,
-    Block,
+    Block(usize, Rc<HashMap<String, usize>>, Scope),
 }
 
-impl PartialEq for Primitive {
+impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
-        use Primitive::*;
+        use Value::*;
         match (self, other) {
             (Number(a), Number(b)) => (a - b).abs() < f64::EPSILON,
             (Null, Null) => true,
@@ -81,152 +98,85 @@ impl PartialEq for Primitive {
 
 #[derive(Clone, Debug)]
 pub enum Function {
-    Native(Rc<[Cmd]>, Scope),
+    Native(usize, Scope),
     Foreign(ForeignFunction),
 }
 
 impl Value {
     pub fn number(f: f64) -> Value {
-        Value {
-            primitive: Primitive::Number(f),
-            field: Rc::new(HashMap::new()),
-            scope: Scope(None),
-        }
+        Value::Number(f)
     }
 
     pub fn null() -> Value {
-        Value {
-            primitive: Primitive::Null,
-            field: Rc::new(HashMap::new()),
-            scope: Scope(None),
-        }
+        Value::Null
     }
 
     pub fn into_number(self) -> Result<f64> {
-        match self.primitive {
-            Primitive::Number(n) => Ok(n),
+        match self {
+            Value::Number(n) => Ok(n),
             _ => Err(anyhow!("not number")),
         }
     }
 
     pub fn bool(b: bool) -> Value {
-        Value {
-            primitive: Primitive::Bool(b),
-            field: Rc::new(HashMap::new()),
-            scope: Scope(None),
-        }
+        Value::Bool(b)
     }
 
     pub fn into_bool(self) -> Result<bool> {
-        match self.primitive {
-            Primitive::Bool(b) => Ok(b),
+        match self {
+            Value::Bool(b) => Ok(b),
             _ => Err(anyhow!("not bool")),
         }
     }
 
     pub fn function(f: Function) -> Value {
-        Value {
-            primitive: Primitive::Function(f),
-            field: Rc::new(HashMap::new()),
-            scope: Scope(None),
-        }
+        Value::Function(f)
     }
 
     pub fn into_function(self) -> Result<Function> {
-        match self.primitive {
-            Primitive::Function(func) => Ok(func),
-            _ => Err(anyhow!("{:?} is not function", self.primitive)),
+        match self {
+            Value::Function(func) => Ok(func),
+            _ => Err(anyhow!("{:?} is not function", self)),
         }
     }
 
     pub fn string(v: Rc<String>) -> Value {
-        let mut field = HashMap::new();
-        field.insert("concat".to_string(), 0_usize);
-        let mut binds = Vec::new();
-
-        let cloned = v.clone();
-        binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
-            Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
-                let dst = args.pop().unwrap().into_string().unwrap();
-                let v = format!("{}{}", v, dst);
-                Value::string(Rc::new(v))
-            }))),
-        )))));
-
-        let mut scope = Scope(None);
-        scope.push(binds);
-
-        Value {
-            primitive: Primitive::String(cloned),
-            field: Rc::new(field),
-            scope,
-        }
+        Value::String(v)
     }
 
     pub fn into_string(self) -> Result<Rc<String>> {
-        match self.primitive {
-            Primitive::String(s) => Ok(s),
-            _ => Err(anyhow!("{:?} is not string", self.primitive)),
+        match self {
+            Value::String(s) => Ok(s),
+            _ => Err(anyhow!("{:?} is not string", self)),
         }
     }
 
-    pub fn block(field: Rc<HashMap<String, usize>>, scope: Scope) -> Value {
-        Value {
-            primitive: Primitive::Block,
-            field,
-            scope,
+    pub fn block(i: usize, field: Rc<HashMap<String, usize>>, scope: Scope) -> Value {
+        Value::Block(i, field, scope)
+    }
+
+    pub fn into_block(self) -> Result<(usize, Rc<HashMap<String, usize>>, Scope)> {
+        match self {
+            Value::Block(addr, field, scope) => Ok((addr, field, scope)),
+            _ => Err(anyhow!("{:?} is not block", self)),
         }
     }
 
     pub fn list(v: Rc<Vec<Value>>) -> Value {
-        let mut field = HashMap::new();
-        field.insert("concat".to_string(), 0_usize);
-        field.insert("to_iter".to_string(), 1_usize);
-        let mut binds = Vec::new();
-
-        let cloned = v.clone();
-        binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
-            Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
-                let mut v = (*v).clone();
-                let dst = args.pop().unwrap().into_list().unwrap();
-                v.append(&mut (*dst).clone());
-                Value::list(Rc::new(v))
-            }))),
-        )))));
-        let v = cloned;
-
-        let cloned = v.clone();
-        binds.push(Rc::new(RefCell::new(Bind::Evalueated(Value::function(
-            Function::Foreign(ForeignFunction(Rc::new(move |_, mut args| {
-                let mut v = (*v).clone();
-                let dst = args.pop().unwrap().into_list().unwrap();
-                v.append(&mut (*dst).clone());
-                Value::list(Rc::new(v))
-            }))),
-        )))));
-        let v = cloned;
-
-        let mut scope = Scope(None);
-        scope.push(binds);
-
-        Value {
-            primitive: Primitive::List(v),
-            field: Rc::new(field),
-            scope,
-        }
+        Value::List(v)
     }
 
     pub fn into_list(self) -> Result<Rc<Vec<Value>>> {
-        match self.primitive {
-            Primitive::List(v) => Ok(v),
-            _ => Err(anyhow!("{:?} is not list", self.primitive)),
+        match self {
+            Value::List(v) => Ok(v),
+            _ => Err(anyhow!("{:?} is not list", self)),
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum Bind {
-    Cmd(Vec<Cmd>),
+    Cmd(usize),
     Evalueated(Value),
 }
 
@@ -257,236 +207,310 @@ impl Scope {
 }
 
 pub fn run(program: &[Cmd]) -> Result<Value> {
-    let mut vm = VM::new();
+    let vm = VM::new();
     vm.run(program)
 }
 
 struct VM {
     scope: Scope,
+    call_stack: Vec<(usize, Scope)>,
+    stack: Vec<Value>,
+    i: usize,
 }
 
 impl VM {
     fn new() -> VM {
         let scope: Scope = Scope(None);
-        VM { scope }
+        VM {
+            scope,
+            call_stack: Vec::new(),
+            stack: Vec::new(),
+            i: 0,
+        }
     }
 
-    fn run(&mut self, program: &[Cmd]) -> Result<Value> {
-        let mut i: usize = 0;
-        let mut stack: Vec<Value> = Vec::new();
+    fn run(mut self, program: &[Cmd]) -> Result<Value> {
         let len = program.len();
-        while len > i {
+        while len > self.i {
             use Cmd::*;
-            match program[i] {
-                Add => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::number(l + r));
-                    i += 1;
-                    continue;
-                }
-                Sub => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::number(l - r));
-                    i += 1;
-                    continue;
-                }
-                Mul => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::number(l * r));
-                    i += 1;
-                    continue;
-                }
-                Div => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::number(l / r));
-                    i += 1;
-                    continue;
-                }
-                Surplus => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::number(l % r));
-                    i += 1;
-                    continue;
-                }
-                Equal => {
-                    let r = stack.pop().unwrap();
-                    let l = stack.pop().unwrap();
-                    stack.push(Value::bool(r == l));
-                    i += 1;
-                    continue;
-                }
-                Not => {
-                    let b = stack.pop().unwrap().into_bool()?;
-                    stack.push(Value::bool(!b));
-                    i += 1;
-                    continue;
-                }
-                Cmd::GreaterThan => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::bool(l > r));
-                    i += 1;
-                    continue;
-                }
-                Cmd::LessThan => {
-                    let r = stack.pop().unwrap().into_number()?;
-                    let l = stack.pop().unwrap().into_number()?;
-                    stack.push(Value::bool(l < r));
-                    i += 1;
-                    continue;
-                }
-                NumberConst(n) => {
-                    stack.push(Value::number(n));
-                    i += 1;
-                    continue;
-                }
-                StringConst(ref s) => {
-                    stack.push(Value::string(s.clone()));
-                    i += 1;
-                    continue;
-                }
-                ConstructList(size) => {
-                    let mut vec = Vec::new();
-                    for _ in 0..size {
-                        let v = stack.pop().unwrap();
-                        vec.push(v);
-                    }
-                    vec.reverse();
-                    stack.push(Value::list(Rc::new(vec)));
-                    i += 1;
-                    continue;
-                }
-                NullConst => {
-                    stack.push(Value::null());
-                    i += 1;
-                    continue;
-                }
-                Block(ref def_addrs) => {
-                    let mut binds = Vec::new();
-                    let mut body_base = i + 1;
-                    for addr in def_addrs.iter() {
-                        let range = body_base..body_base + addr;
-                        binds.push(Rc::new(RefCell::new(Bind::Cmd(program[range].to_vec()))));
-                        body_base += addr;
-                    }
-                    i = body_base;
+            match program[self.i] {
+                Add => self.add()?,
+                Sub => self.sub()?,
+                Mul => self.mul()?,
+                Div => self.div()?,
+                Surplus => self.surplus()?,
+                Equal => self.equal()?,
+                Not => self.not()?,
+                GreaterThan => self.greater_than()?,
+                LessThan => self.less_than()?,
+                NumberConst(n) => self.number_const(n)?,
+                StringConst(ref s) => self.string_const(s.clone())?,
+                ConstructList(size) => self.list(size)?,
+                NullConst => self.null()?,
+                Block(ref def_addrs) => self.block(def_addrs)?,
+                Return => self.return_()?,
+                ExitScope => self.exit_scope()?,
+                JumpRel(n) => self.jump_rel(n)?,
+                JumpRelIf(n) => self.jump_rel_if(n)?,
+                Load(i, depth) => self.load(i, depth)?,
+                Store(i) => self.store(i)?,
+                ConstructFunction(len) => self.function(len)?,
+                Cmd::ForeignFunction(ref func) => self.foreign_function(func.clone())?,
+                ConstructBlock(len, ref map) => self.construct_block(len, map.clone())?,
+                Call(arg_len) => self.call(arg_len)?,
+                Access => self.access()?,
+                Index => self.index()?,
+            };
+        }
+        Ok(self.stack.pop().unwrap())
+    }
 
-                    self.scope.push(binds);
+    fn add(&mut self) -> Result<()> {
+        let r = self.stack.pop().unwrap().into_number()?;
+        let l = self.stack.pop().unwrap().into_number()?;
+        self.stack.push(Value::number(l + r));
+        self.i += 1;
+        Ok(())
+    }
 
-                    continue;
-                }
-                ExitScope => {
-                    self.scope.pop();
-                    i += 1;
-                    continue;
-                }
-                JumpRel(n) => {
-                    i += n;
-                    continue;
-                }
-                JumpRelIf(n) => {
-                    let cond = stack.pop().unwrap().into_bool()?;
-                    if cond {
-                        i += n;
-                        continue;
-                    }
-                    i += 1;
-                    continue;
-                }
-                Load(n, depth) => {
-                    let scope = self.scope.nth_parent(depth).clone();
-                    let binds: &Binds = scope.0.as_ref().unwrap().0.as_ref();
+    fn sub(&mut self) -> Result<()> {
+        let r = self.stack.pop().unwrap().into_number()?;
+        let l = self.stack.pop().unwrap().into_number()?;
+        self.stack.push(Value::number(l - r));
+        self.i += 1;
+        Ok(())
+    }
 
-                    let bind = binds.get(n).unwrap();
-                    let inner = bind.borrow().clone();
-                    let v = match inner {
-                        Bind::Evalueated(v) => v,
-                        Bind::Cmd(cmd) => {
-                            let ret = mem::replace(&mut self.scope, scope.clone());
-                            let v = self.run(&cmd)?;
-                            *bind.borrow_mut() = Bind::Evalueated(v.clone());
-                            self.scope = ret;
-                            v
-                        }
-                    };
-                    stack.push(v);
-                    i += 1;
-                    continue;
-                }
-                ConstructFunction(len) => {
-                    let body_base = i + 1;
-                    let body_range = body_base..body_base + len;
-                    stack.push(Value::function(Function::Native(
-                        Rc::from(&program[body_range]),
-                        self.scope.clone(),
-                    )));
-                    i += len + 1;
-                    continue;
-                }
-                ForeignFunction(ref func) => {
-                    stack.push(Value::function(Function::Foreign(func.clone())));
-                    i += 1;
-                    continue;
-                }
-                ConstructBlock(ref map) => {
-                    stack.push(Value::block(map.clone(), self.scope.clone()));
-                    i += 1;
-                    continue;
-                }
-                Call(arg_len) => {
-                    let len = stack.len() - arg_len;
-                    let args = stack.split_off(len);
+    fn mul(&mut self) -> Result<()> {
+        let r = self.stack.pop().unwrap().into_number()?;
+        let l = self.stack.pop().unwrap().into_number()?;
+        self.stack.push(Value::number(l * r));
+        self.i += 1;
+        Ok(())
+    }
 
-                    match stack.pop().unwrap().into_function()? {
-                        Function::Native(body, closure_scope) => {
-                            let ret_scope = mem::replace(&mut self.scope, closure_scope);
+    fn div(&mut self) -> Result<()> {
+        let r = self.stack.pop().unwrap().into_number()?;
+        let l = self.stack.pop().unwrap().into_number()?;
+        self.stack.push(Value::number(l / r));
+        self.i += 1;
+        Ok(())
+    }
 
-                            let mut defs = Vec::new();
-                            for arg in args {
-                                defs.push(Rc::new(RefCell::new(Bind::Evalueated(arg))));
-                            }
-                            self.scope.push(defs);
+    fn surplus(&mut self) -> Result<()> {
+        let r = self.stack.pop().unwrap().into_number()?;
+        let l = self.stack.pop().unwrap().into_number()?;
+        self.stack.push(Value::number(l % r));
+        self.i += 1;
+        Ok(())
+    }
 
-                            stack.push(self.run(&body)?);
+    fn equal(&mut self) -> Result<()> {
+        let r = self.stack.pop().unwrap();
+        let l = self.stack.pop().unwrap();
+        self.stack.push(Value::bool(r == l));
+        self.i += 1;
+        Ok(())
+    }
 
-                            self.scope = ret_scope;
-                        }
-                        Function::Foreign(func) => {
-                            stack.push(func.0(&self.scope, args));
-                        }
-                    }
-                    i += 1;
-                    continue;
+    fn not(&mut self) -> Result<()> {
+        let b = self.stack.pop().unwrap().into_bool()?;
+        self.stack.push(Value::bool(!b));
+        self.i += 1;
+        Ok(())
+    }
+
+    fn greater_than(&mut self) -> Result<()> {
+        let r = self.stack.pop().unwrap().into_number()?;
+        let l = self.stack.pop().unwrap().into_number()?;
+        self.stack.push(Value::bool(l > r));
+        self.i += 1;
+        Ok(())
+    }
+
+    fn less_than(&mut self) -> Result<()> {
+        let r = self.stack.pop().unwrap().into_number()?;
+        let l = self.stack.pop().unwrap().into_number()?;
+        self.stack.push(Value::bool(l < r));
+        self.i += 1;
+        Ok(())
+    }
+
+    fn number_const(&mut self, n: f64) -> Result<()> {
+        self.stack.push(Value::number(n));
+        self.i += 1;
+        Ok(())
+    }
+
+    fn string_const(&mut self, s: Rc<String>) -> Result<()> {
+        self.stack.push(Value::string(s));
+        self.i += 1;
+        Ok(())
+    }
+
+    fn list(&mut self, size: usize) -> Result<()> {
+        let mut vec = Vec::new();
+        for _ in 0..size {
+            let v = self.stack.pop().unwrap();
+            vec.push(v);
+        }
+        vec.reverse();
+        self.stack.push(Value::list(Rc::new(vec)));
+        self.i += 1;
+        Ok(())
+    }
+
+    fn null(&mut self) -> Result<()> {
+        self.stack.push(Value::null());
+        self.i += 1;
+        Ok(())
+    }
+
+    fn block(&mut self, def_addrs: &[usize]) -> Result<()> {
+        let mut binds = Vec::new();
+        let mut body_base = self.i + 1;
+        for addr in def_addrs.iter() {
+            binds.push(Rc::new(RefCell::new(Bind::Cmd(body_base))));
+            body_base += addr;
+        }
+        self.i = body_base;
+
+        self.scope.push(binds);
+
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) -> Result<()> {
+        self.scope.pop();
+        self.i += 1;
+        Ok(())
+    }
+
+    fn jump_rel(&mut self, n: usize) -> Result<()> {
+        self.i += n;
+        Ok(())
+    }
+
+    fn jump_rel_if(&mut self, n: usize) -> Result<()> {
+        let cond = self.stack.pop().unwrap().into_bool()?;
+        if cond {
+            self.i += n;
+            return Ok(());
+        }
+        self.i += 1;
+        Ok(())
+    }
+
+    fn load(&mut self, n: usize, depth: usize) -> Result<()> {
+        let scope = self.scope.nth_parent(depth);
+        let binds: &Binds = scope.0.as_ref().unwrap().0.as_ref();
+
+        let bind = binds.get(n).unwrap();
+        let inner = bind.borrow().clone();
+        match inner {
+            Bind::Evalueated(v) => {
+                self.stack.push(v);
+                self.i += 1;
+                return Ok(());
+            }
+            Bind::Cmd(addr) => {
+                let ret_i = self.i + 1;
+                let scope = scope.clone();
+                let ret_scope = mem::replace(&mut self.scope, scope);
+
+                self.call_stack.push((ret_i, ret_scope));
+                self.i = addr;
+                return Ok(());
+            }
+        };
+    }
+
+    fn return_(&mut self) -> Result<()> {
+        let (ret_i, ret_scope) = self.call_stack.pop().unwrap();
+        self.i = ret_i;
+        self.scope = ret_scope;
+        Ok(())
+    }
+
+    fn store(&mut self, n: usize) -> Result<()> {
+        let v = self.stack.pop().unwrap();
+        let binds: &Binds = self.scope.0.as_ref().unwrap().0.as_ref();
+
+        let bind = binds.get(n).unwrap();
+        *bind.borrow_mut() = Bind::Evalueated(v.clone());
+        self.stack.push(v);
+
+        self.i += 1;
+        Ok(())
+    }
+
+    fn function(&mut self, len: usize) -> Result<()> {
+        let body_base = self.i + 1;
+        self.stack.push(Value::function(Function::Native(
+            body_base,
+            self.scope.clone(),
+        )));
+        self.i = body_base + len;
+        Ok(())
+    }
+
+    fn foreign_function(&mut self, func: ForeignFunction) -> Result<()> {
+        self.stack.push(Value::function(Function::Foreign(func)));
+        self.i += 1;
+        Ok(())
+    }
+
+    fn construct_block(&mut self, len: usize, map: Rc<HashMap<String, usize>>) -> Result<()> {
+        self.stack
+            .push(Value::block(self.i + 1, map, self.scope.clone()));
+        self.i += 1 + len;
+        Ok(())
+    }
+
+    fn call(&mut self, arg_len: usize) -> Result<()> {
+        let len = self.stack.len() - arg_len;
+        let mut args = self.stack.split_off(len);
+
+        match self.stack.pop().unwrap().into_function()? {
+            Function::Native(addr, closure_scope) => {
+                let ret_scope = mem::replace(&mut self.scope, closure_scope);
+
+                let mut defs = Vec::new();
+                for arg in args {
+                    defs.push(Rc::new(RefCell::new(Bind::Evalueated(arg))));
                 }
-                Access => {
-                    let name = stack.pop().unwrap().into_string()?;
-                    let target = stack.pop().unwrap();
-                    let map = target.field;
-                    let scope = target.scope;
-                    let id = map.get(&*name).unwrap();
-                    let ret_scope = mem::replace(&mut self.scope, scope);
+                self.scope.push(defs);
 
-                    stack.push(self.run(&[Cmd::Load(*id, 0)])?);
-
-                    self.scope = ret_scope;
-                    i += 1;
-                    continue;
-                }
-                Index => {
-                    let index = stack.pop().unwrap().into_number()?;
-                    let list = stack.pop().unwrap().into_list()?;
-                    stack.push(list.get(index as usize).unwrap().clone());
-
-                    i += 1;
-                    continue;
-                }
+                self.call_stack.push((self.i + 1, ret_scope));
+                self.i = addr;
+                return Ok(());
+            }
+            Function::Foreign(func) => {
+                args.reverse();
+                self.stack.push(func.0(&self.scope, args));
+                self.i += 1;
+                return Ok(());
             }
         }
-        Ok(stack.pop().unwrap())
+    }
+
+    fn access(&mut self) -> Result<()> {
+        let name = self.stack.pop().unwrap().into_string()?;
+        let (addr, map, scope) = self.stack.pop().unwrap().into_block()?;
+        let id = map.get(&*name).unwrap();
+        let ret_scope = mem::replace(&mut self.scope, scope);
+
+        self.call_stack.push((self.i + 1, ret_scope));
+        self.i = id * 2 + addr;
+        Ok(())
+    }
+
+    fn index(&mut self) -> Result<()> {
+        let index = self.stack.pop().unwrap().into_number()?;
+        let list = self.stack.pop().unwrap().into_list()?;
+        self.stack.push(list.get(index as usize).unwrap().clone());
+
+        self.i += 1;
+        Ok(())
     }
 }
