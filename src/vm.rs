@@ -174,13 +174,13 @@ impl Value {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Bind {
     Cmd(usize),
     Evalueated(Value),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Scope(Option<Rc<(Binds, Scope)>>);
 
 type Binds = Vec<Rc<RefCell<Bind>>>;
@@ -491,12 +491,14 @@ impl<'a> VM<'a> {
                 }) {
                     if let Some(cs) = self.call_stack.iter().rev().find(|cs| cs.0.is_some()) {
                         if id == cs.0.unwrap() {
-                            for _ in 0..i {
-                                self.scope.pop();
+                            if cs.2 == closure_scope {
+                                for _ in 0..i {
+                                    self.scope.pop();
+                                }
+                                self.scope.push(defs);
+                                self.i = addr;
+                                return Ok(());
                             }
-                            self.scope.push(defs);
-                            self.i = addr;
-                            return Ok(());
                         }
                     }
                 }
