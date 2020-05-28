@@ -23,11 +23,11 @@ pub enum Cmd {
     StringConst(Rc<String>),
     NullConst,
     ConstructList(usize),
-    ConstructFunction(usize),
+    ConstructFunction(usize, usize),
     ConstructBlock(usize, Rc<HashMap<String, usize>>),
     ForeignFunction(ForeignFunction),
     JumpRel(usize),
-    JumpRelIf(usize),
+    JumpRelUnless(usize),
     Call(usize),
     Index,
     Access,
@@ -98,7 +98,7 @@ impl PartialEq for Value {
 
 #[derive(Clone, Debug)]
 pub enum Function {
-    Native(usize, Scope),
+    Native(usize, usize, Scope),
     Foreign(ForeignFunction),
 }
 
@@ -207,33 +207,35 @@ impl Scope {
 }
 
 pub fn run(program: &[Cmd]) -> Result<Value> {
-    let vm = VM::new();
-    vm.run(program)
+    let vm = VM::new(program);
+    vm.run()
 }
 
-struct VM {
+struct VM<'a> {
     scope: Scope,
-    call_stack: Vec<(usize, Scope)>,
+    call_stack: Vec<(Option<usize>, usize, Scope)>,
     stack: Vec<Value>,
     i: usize,
+    program: &'a [Cmd]
 }
 
-impl VM {
-    fn new() -> VM {
+impl<'a> VM<'a> {
+    fn new(program: &'a [Cmd]) -> VM {
         let scope: Scope = Scope(None);
         VM {
             scope,
             call_stack: Vec::new(),
             stack: Vec::new(),
             i: 0,
+            program,
         }
     }
 
-    fn run(mut self, program: &[Cmd]) -> Result<Value> {
-        let len = program.len();
+    fn run(mut self) -> Result<Value> {
+        let len = self.program.len();
         while len > self.i {
             use Cmd::*;
-            match program[self.i] {
+            match self.program[self.i] {
                 Add => self.add()?,
                 Sub => self.sub()?,
                 Mul => self.mul()?,
@@ -251,10 +253,10 @@ impl VM {
                 Return => self.return_()?,
                 ExitScope => self.exit_scope()?,
                 JumpRel(n) => self.jump_rel(n)?,
-                JumpRelIf(n) => self.jump_rel_if(n)?,
+                JumpRelUnless(n) => self.jump_rel_unless(n)?,
                 Load(i, depth) => self.load(i, depth)?,
                 Store(i) => self.store(i)?,
-                ConstructFunction(len) => self.function(len)?,
+                ConstructFunction(id, len) => self.function(id, len)?,
                 Cmd::ForeignFunction(ref func) => self.foreign_function(func.clone())?,
                 ConstructBlock(len, ref map) => self.construct_block(len, map.clone())?,
                 Call(arg_len) => self.call(arg_len)?,
@@ -391,9 +393,9 @@ impl VM {
         Ok(())
     }
 
-    fn jump_rel_if(&mut self, n: usize) -> Result<()> {
+    fn jump_rel_unless(&mut self, n: usize) -> Result<()> {
         let cond = self.stack.pop().unwrap().into_bool()?;
-        if cond {
+        if !cond {
             self.i += n;
             return Ok(());
         }
@@ -418,7 +420,7 @@ impl VM {
                 let scope = scope.clone();
                 let ret_scope = mem::replace(&mut self.scope, scope);
 
-                self.call_stack.push((ret_i, ret_scope));
+                self.call_stack.push((None, ret_i, ret_scope));
                 self.i = addr;
                 return Ok(());
             }
@@ -426,7 +428,7 @@ impl VM {
     }
 
     fn return_(&mut self) -> Result<()> {
-        let (ret_i, ret_scope) = self.call_stack.pop().unwrap();
+        let (_, ret_i, ret_scope) = self.call_stack.pop().unwrap();
         self.i = ret_i;
         self.scope = ret_scope;
         Ok(())
@@ -444,9 +446,10 @@ impl VM {
         Ok(())
     }
 
-    fn function(&mut self, len: usize) -> Result<()> {
+    fn function(&mut self, id: usize, len: usize) -> Result<()> {
         let body_base = self.i + 1;
         self.stack.push(Value::function(Function::Native(
+            id,
             body_base,
             self.scope.clone(),
         )));
@@ -472,16 +475,36 @@ impl VM {
         let mut args = self.stack.split_off(len);
 
         match self.stack.pop().unwrap().into_function()? {
-            Function::Native(addr, closure_scope) => {
-                let ret_scope = mem::replace(&mut self.scope, closure_scope);
-
+            Function::Native(id, addr, closure_scope) => {
                 let mut defs = Vec::new();
                 for arg in args {
                     defs.push(Rc::new(RefCell::new(Bind::Evalueated(arg))));
                 }
+
+                let mut i = 0;
+                if let Some(Cmd::Return) = self.program[(self.i + 1)..].iter().find(|cmd| match cmd {
+                    Cmd::ExitScope => {
+                        i += 1;
+                        false
+                    },
+                    _ => true
+                }) {
+                    if let Some(cs) = self.call_stack.iter().rev().find(|cs| cs.0.is_some()) {
+                        if id == cs.0.unwrap() {
+                            for _ in 0..i {
+                                self.scope.pop();
+                            }
+                            self.scope.push(defs);
+                            self.i = addr;
+                            return Ok(());
+                        }
+                    }
+                }
+
+                let ret_scope = mem::replace(&mut self.scope, closure_scope);
                 self.scope.push(defs);
 
-                self.call_stack.push((self.i + 1, ret_scope));
+                self.call_stack.push((Some(id), self.i + 1, ret_scope));
                 self.i = addr;
                 return Ok(());
             }
@@ -500,7 +523,7 @@ impl VM {
         let id = map.get(&*name).unwrap();
         let ret_scope = mem::replace(&mut self.scope, scope);
 
-        self.call_stack.push((self.i + 1, ret_scope));
+        self.call_stack.push((None, self.i + 1, ret_scope));
         self.i = id * 2 + addr;
         Ok(())
     }
