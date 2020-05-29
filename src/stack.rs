@@ -1,6 +1,7 @@
 use crate::parser;
 use crate::token::*;
 use crate::vm::{Cmd, ForeignFunction, Value};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -114,6 +115,7 @@ struct Translator<'a> {
     env: HashMap<String, usize>,
     bind_cnt: usize,
     parent: Option<&'a Translator<'a>>,
+    function_id: Rc<Cell<usize>>,
 }
 
 impl<'a> Translator<'a> {
@@ -122,6 +124,7 @@ impl<'a> Translator<'a> {
             env: HashMap::new(),
             bind_cnt: 0,
             parent: None,
+            function_id: Rc::new(Cell::new(0)),
         }
     }
 
@@ -130,6 +133,7 @@ impl<'a> Translator<'a> {
             env: HashMap::new(),
             bind_cnt: 0,
             parent: Some(self),
+            function_id: self.function_id.clone(),
         }
     }
 
@@ -178,18 +182,18 @@ impl<'a> Translator<'a> {
             Expression::If { cond, cons, alt } => {
                 let mut cond_cmd = self.translate_expression(cond);
 
-                let mut cons_cmd = self.translate_expression(cons);
-
                 let mut alt_cmd = self.translate_expression(alt);
-                alt_cmd.push(Cmd::JumpRel(cons_cmd.len() + 1));
+
+                let mut cons_cmd = self.translate_expression(cons);
+                cons_cmd.push(Cmd::JumpRel(alt_cmd.len() + 1));
 
                 let mut cmd = Vec::new();
 
                 cmd.append(&mut cond_cmd);
-                cmd.push(Cmd::JumpRelIf(alt_cmd.len() + 1));
+                cmd.push(Cmd::JumpRelUnless(cons_cmd.len() + 1));
 
-                cmd.append(&mut alt_cmd);
                 cmd.append(&mut cons_cmd);
+                cmd.append(&mut alt_cmd);
 
                 cmd
             }
@@ -316,7 +320,9 @@ impl<'a> Translator<'a> {
                 body_cmd.push(Cmd::Return);
 
                 let mut cmd = Vec::new();
-                cmd.push(Cmd::ConstructFunction(body_cmd.len()));
+                let id = self.function_id.get();
+                cmd.push(Cmd::ConstructFunction(id, body_cmd.len()));
+                self.function_id.set(id + 1);
                 cmd.append(&mut body_cmd);
                 cmd
             }
