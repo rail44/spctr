@@ -56,7 +56,7 @@ impl fmt::Display for Value {
                 write!(f, "[{}]", fmt_values.join(", "))
             }
             Value::Null => write!(f, "null"),
-            Value::Block(_, field, _) => {
+            Value::Block((_, field, _)) => {
                 write!(f, "{:?}", field)
                 // let mut vm = VM::new();
                 // vm.scope = self.scope.clone();
@@ -74,6 +74,8 @@ impl fmt::Display for Value {
     }
 }
 
+type Block = (usize, Rc<HashMap<String, usize>>, Scope);
+
 #[derive(Clone, Debug)]
 pub enum Value {
     Number(f64),
@@ -82,7 +84,7 @@ pub enum Value {
     Function(Function),
     List(Rc<Vec<Value>>),
     Null,
-    Block(usize, Rc<HashMap<String, usize>>, Scope),
+    Block(Block),
 }
 
 impl PartialEq for Value {
@@ -152,12 +154,12 @@ impl Value {
     }
 
     pub fn block(i: usize, field: Rc<HashMap<String, usize>>, scope: Scope) -> Value {
-        Value::Block(i, field, scope)
+        Value::Block((i, field, scope))
     }
 
-    pub fn into_block(self) -> Result<(usize, Rc<HashMap<String, usize>>, Scope)> {
+    pub fn into_block(self) -> Result<Block> {
         match self {
-            Value::Block(addr, field, scope) => Ok((addr, field, scope)),
+            Value::Block(b) => Ok(b),
             _ => Err(anyhow!("{:?} is not block", self)),
         }
     }
@@ -216,7 +218,7 @@ struct VM<'a> {
     call_stack: Vec<(Option<usize>, usize, Scope)>,
     stack: Vec<Value>,
     i: usize,
-    program: &'a [Cmd]
+    program: &'a [Cmd],
 }
 
 impl<'a> VM<'a> {
@@ -413,7 +415,7 @@ impl<'a> VM<'a> {
             Bind::Evalueated(v) => {
                 self.stack.push(v);
                 self.i += 1;
-                return Ok(());
+                Ok(())
             }
             Bind::Cmd(addr) => {
                 let ret_i = self.i + 1;
@@ -422,9 +424,9 @@ impl<'a> VM<'a> {
 
                 self.call_stack.push((None, ret_i, ret_scope));
                 self.i = addr;
-                return Ok(());
+                Ok(())
             }
-        };
+        }
     }
 
     fn return_(&mut self) -> Result<()> {
@@ -481,24 +483,26 @@ impl<'a> VM<'a> {
                     defs.push(Rc::new(RefCell::new(Bind::Evalueated(arg))));
                 }
 
-                let mut i = 0;
-                if let Some(Cmd::Return) = self.program[(self.i + 1)..].iter().find(|cmd| match cmd {
+                let mut stacked_scope = 0;
+                let next_cmd = self.program[(self.i + 1)..].iter().find(|cmd| match cmd {
                     Cmd::ExitScope => {
-                        i += 1;
+                        stacked_scope += 1;
                         false
-                    },
-                    _ => true
-                }) {
-                    if let Some(cs) = self.call_stack.iter().rev().find(|cs| cs.0.is_some()) {
-                        if id == cs.0.unwrap() {
-                            if cs.2 == closure_scope {
-                                for _ in 0..i {
-                                    self.scope.pop();
-                                }
-                                self.scope.push(defs);
-                                self.i = addr;
-                                return Ok(());
+                    }
+                    _ => true,
+                });
+
+                if let Some(Cmd::Return) = next_cmd {
+                    let current_func_stack = self.call_stack.iter().rev().find(|cs| cs.0.is_some());
+
+                    if let Some(cs) = current_func_stack {
+                        if id == cs.0.unwrap() && cs.2 == closure_scope {
+                            for _ in 0..stacked_scope {
+                                self.scope.pop();
                             }
+                            self.scope.push(defs);
+                            self.i = addr;
+                            return Ok(());
                         }
                     }
                 }
@@ -508,13 +512,13 @@ impl<'a> VM<'a> {
 
                 self.call_stack.push((Some(id), self.i + 1, ret_scope));
                 self.i = addr;
-                return Ok(());
+                Ok(())
             }
             Function::Foreign(func) => {
                 args.reverse();
                 self.stack.push(func.0(&self.scope, args));
                 self.i += 1;
-                return Ok(());
+                Ok(())
             }
         }
     }

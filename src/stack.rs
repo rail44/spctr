@@ -1,9 +1,9 @@
 use crate::parser;
 use crate::token::*;
 use crate::vm::{Cmd, ForeignFunction, Value};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::Cell;
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
