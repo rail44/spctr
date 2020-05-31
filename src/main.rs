@@ -1,8 +1,8 @@
+mod lib;
 mod parser;
 mod token;
 mod translator;
 mod vm;
-mod lib;
 
 use crate::vm::Value;
 use anyhow::{anyhow, Result};

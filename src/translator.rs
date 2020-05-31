@@ -1,7 +1,7 @@
+use crate::lib;
 use crate::parser;
 use crate::token::*;
 use crate::vm::Cmd;
-use crate::lib;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
