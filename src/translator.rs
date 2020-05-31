@@ -1,6 +1,7 @@
 use crate::parser;
 use crate::token::*;
-use crate::vm::{Cmd, ForeignFunction, Value};
+use crate::vm::Cmd;
+use crate::lib;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -10,47 +11,17 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut block = translator.block();
 
     block.add_bind("Iterator", |translator| {
-        let token = parser::parse(include_str!("iterator.spc")).unwrap().1;
+        let token = parser::parse(include_str!("lib/iterator.spc")).unwrap().1;
         translator.fork().translate(&token)
     });
 
-    block.add_bind("List", |translator| {
-        let mut translator = translator.fork();
-        let mut block = translator.block();
-
-        block.add_bind("concat", |_| {
-            vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(
-                move |_, mut args| {
-                    let mut target = (*args.pop().unwrap().into_list().unwrap()).clone();
-                    let mut dst = (*args.pop().unwrap().into_list().unwrap()).clone();
-                    target.append(&mut dst);
-                    Value::list(Rc::new(target))
-                },
-            )))]
-        });
-        block.finalize()
-    });
-
-    block.add_bind("String", |translator| {
-        let mut translator = translator.fork();
-        let mut block = translator.block();
-
-        block.add_bind("concat", |_| {
-            vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(
-                move |_, mut args| {
-                    let target = args.pop().unwrap().into_string().unwrap();
-                    let dst = args.pop().unwrap().into_string().unwrap();
-                    Value::string(Rc::new(format!("{}{}", target, dst)))
-                },
-            )))]
-        });
-        block.finalize()
-    });
+    block.add_bind("List", lib::list::get_module);
+    block.add_bind("String", lib::string::get_module);
     block.set_body(|translator| translator.fork().translate(ast));
     block.finalize()
 }
 
-struct BlockTranslator<'a> {
+pub struct BlockTranslator<'a> {
     translator: &'a mut Translator<'a>,
     bind_names: Vec<String>,
     bind_bodies: Vec<Box<dyn FnOnce(&mut Translator) -> Vec<Cmd> + 'a>>,
@@ -58,7 +29,7 @@ struct BlockTranslator<'a> {
 }
 
 impl<'a> BlockTranslator<'a> {
-    fn add_bind<S, F>(&mut self, name: S, f: F)
+    pub fn add_bind<S, F>(&mut self, name: S, f: F)
     where
         S: ToString,
         F: FnOnce(&mut Translator) -> Vec<Cmd> + 'a,
@@ -74,7 +45,7 @@ impl<'a> BlockTranslator<'a> {
         self.body = Some(Box::new(f));
     }
 
-    fn finalize(self) -> Vec<Cmd> {
+    pub fn finalize(self) -> Vec<Cmd> {
         let mut cmd = Vec::new();
         let mut b = Vec::new();
         let l = self.bind_names.len();
@@ -117,7 +88,7 @@ impl<'a> BlockTranslator<'a> {
     }
 }
 
-struct Translator<'a> {
+pub struct Translator<'a> {
     env: HashMap<String, usize>,
     bind_cnt: usize,
     parent: Option<&'a Translator<'a>>,
@@ -134,7 +105,7 @@ impl<'a> Translator<'a> {
         }
     }
 
-    fn block(&'a mut self) -> BlockTranslator<'a> {
+    pub fn block(&'a mut self) -> BlockTranslator<'a> {
         BlockTranslator {
             translator: self,
             bind_bodies: Vec::new(),
@@ -143,7 +114,7 @@ impl<'a> Translator<'a> {
         }
     }
 
-    fn fork(&'a self) -> Translator<'a> {
+    pub fn fork(&'a self) -> Translator<'a> {
         Translator {
             env: HashMap::new(),
             bind_cnt: 0,
