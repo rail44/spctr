@@ -7,108 +7,71 @@ use std::rc::Rc;
 
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
-    let mut cmd = Vec::new();
+    let mut block = translator.block();
 
-    let stdlib_names = vec!["Iterator", "List", "String"];
-    for name in stdlib_names {
-        let id = translator.bind_cnt;
-        translator.env.insert(name.to_string(), id);
-        translator.bind_cnt += 1;
-    }
+    block.add_bind("Iterator", |translator| {
+        let token = parser::parse(include_str!("iterator.spc")).unwrap().1;
+        translator.fork().translate(&token)
+    });
 
-    let mut stdlib_cmds = vec![];
-
-    let token = parser::parse(include_str!("iterator.spc")).unwrap().1;
-    let mut iterator_cmd = translator.fork().translate(&token);
-    iterator_cmd.push(Cmd::Store(0));
-    iterator_cmd.push(Cmd::Return);
-    stdlib_cmds.push(iterator_cmd);
-
-    let mut list_cmd = Vec::new();
-    {
+    block.add_bind("List", |translator| {
         let mut translator = translator.fork();
-        let mut field_cmds = Vec::new();
-        let mut load_cmds = Vec::new();
+        let mut block = translator.block();
 
-        let field_names = vec!["concat"];
-        for name in field_names {
-            let id = translator.bind_cnt;
-            translator.env.insert(name.to_string(), id);
-            load_cmds.push(Cmd::Load(id, 0));
-            load_cmds.push(Cmd::Return);
-            translator.bind_cnt += 1;
-        }
-
-        field_cmds.push(vec![
+        block.add_bind("concat", |_| vec![
             Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
                 let mut target = (*args.pop().unwrap().into_list().unwrap()).clone();
                 let mut dst = (*args.pop().unwrap().into_list().unwrap()).clone();
                 target.append(&mut dst);
                 Value::list(Rc::new(target))
-            }))),
-            Cmd::Store(0),
-            Cmd::Return,
+            })))
         ]);
-        list_cmd.push(Cmd::Block(field_cmds.iter().map(|cmd| cmd.len()).collect()));
-        list_cmd.append(&mut field_cmds.into_iter().flatten().collect());
-        list_cmd.push(Cmd::ConstructBlock(
-            load_cmds.len(),
-            Rc::new(translator.env),
-        ));
-        list_cmd.append(&mut load_cmds);
-        list_cmd.push(Cmd::ExitScope);
-        list_cmd.push(Cmd::Store(1));
-        list_cmd.push(Cmd::Return);
-    }
-    stdlib_cmds.push(list_cmd);
+        block.set_body(move |translator| {
+            let mut cmd = Vec::new();
+            let mut load_cmds = Vec::new();
+            for i in 0..1 {
+                load_cmds.push(Cmd::Load(i, 0));
+                load_cmds.push(Cmd::Return);
+            }
+            cmd.push(Cmd::ConstructBlock(
+                load_cmds.len(),
+                Rc::new(translator.env.clone()),
+            ));
+            cmd.append(&mut load_cmds);
+            cmd
+        });
+        block.finalize()
+    });
 
-    let mut string_cmd = Vec::new();
-    {
+    block.add_bind("String", |translator| {
         let mut translator = translator.fork();
-        let mut field_cmds = Vec::new();
-        let mut load_cmds = Vec::new();
+        let mut block = translator.block();
 
-        let field_names = vec!["concat"];
-        for name in field_names {
-            let id = translator.bind_cnt;
-            translator.env.insert(name.to_string(), id);
-            load_cmds.push(Cmd::Load(id, 0));
-            load_cmds.push(Cmd::Return);
-            translator.bind_cnt += 1;
-        }
-
-        field_cmds.push(vec![
+        block.add_bind("concat", |_| vec![
             Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
                 let target = args.pop().unwrap().into_string().unwrap();
                 let dst = args.pop().unwrap().into_string().unwrap();
                 Value::string(Rc::new(format!("{}{}", target, dst)))
-            }))),
-            Cmd::Store(0),
-            Cmd::Return,
+            })))
         ]);
-        string_cmd.push(Cmd::Block(field_cmds.iter().map(|cmd| cmd.len()).collect()));
-        string_cmd.append(&mut field_cmds.into_iter().flatten().collect());
-        string_cmd.push(Cmd::ConstructBlock(
-            load_cmds.len(),
-            Rc::new(translator.env),
-        ));
-        string_cmd.append(&mut load_cmds);
-        string_cmd.push(Cmd::ExitScope);
-        string_cmd.push(Cmd::Store(2));
-        string_cmd.push(Cmd::Return);
-    }
-    stdlib_cmds.push(string_cmd);
-
-    cmd.push(Cmd::Block(
-        stdlib_cmds.iter().map(|cmd| cmd.len()).collect(),
-    ));
-    cmd.append(&mut stdlib_cmds.into_iter().flatten().collect());
-
-    let mut main_cmd = translator.fork().translate(ast);
-    cmd.append(&mut main_cmd);
-    cmd.push(Cmd::ExitScope);
-
-    cmd
+        block.set_body(move |translator| {
+            let mut cmd = Vec::new();
+            let mut load_cmds = Vec::new();
+            for i in 0..1 {
+                load_cmds.push(Cmd::Load(i, 0));
+                load_cmds.push(Cmd::Return);
+            }
+            cmd.push(Cmd::ConstructBlock(
+                load_cmds.len(),
+                Rc::new(translator.env.clone()),
+            ));
+            cmd.append(&mut load_cmds);
+            cmd
+        });
+        block.finalize()
+    });
+    block.set_body(|translator| translator.fork().translate(ast));
+    block.finalize()
 }
 
 struct BlockTranslator<'a> {
