@@ -111,6 +111,56 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     cmd
 }
 
+struct BlockTranslator<'a> {
+    translator: &'a mut Translator<'a>,
+    bind_names: Vec<String>,
+    bind_bodies: Vec<Box<dyn FnOnce(&mut Translator) -> Vec<Cmd> + 'a>>,
+    body: Option<Box<dyn FnOnce(&mut Translator) -> Vec<Cmd> + 'a>>,
+}
+
+impl<'a> BlockTranslator<'a> {
+    fn add_bind<S, F>(&mut self, name: S, f: F)
+    where
+        S: ToString,
+        F: FnOnce(&mut Translator) -> Vec<Cmd> + 'a,
+    {
+        self.bind_names.push(name.to_string());
+        self.bind_bodies.push(Box::new(f));
+    }
+
+    fn set_body<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut Translator) -> Vec<Cmd> + 'a,
+    {
+        self.body = Some(Box::new(f));
+    }
+
+    fn finalize(self) -> Vec<Cmd> {
+        let mut cmd = Vec::new();
+        let mut b = Vec::new();
+        for name in self.bind_names {
+            let id = self.translator.define_bind(name.to_string());
+            b.push(id);
+        }
+
+        let mut bind_cmds = Vec::new();
+        for (id, f) in b.into_iter().zip(self.bind_bodies) {
+            let mut body_cmd = f(self.translator);
+            body_cmd.push(Cmd::Store(id));
+            body_cmd.push(Cmd::Return);
+            bind_cmds.push(body_cmd);
+        }
+
+        let mut body_cmd = (self.body.unwrap())(self.translator);
+
+        cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
+        cmd.append(&mut bind_cmds.into_iter().flatten().collect());
+        cmd.append(&mut body_cmd);
+        cmd.push(Cmd::ExitScope);
+        cmd
+    }
+}
+
 struct Translator<'a> {
     env: HashMap<String, usize>,
     bind_cnt: usize,
@@ -128,6 +178,15 @@ impl<'a> Translator<'a> {
         }
     }
 
+    fn block(&'a mut self) -> BlockTranslator<'a> {
+        BlockTranslator {
+            translator: self,
+            bind_bodies: Vec::new(),
+            bind_names: Vec::new(),
+            body: None,
+        }
+    }
+
     fn fork(&'a self) -> Translator<'a> {
         Translator {
             env: HashMap::new(),
@@ -139,7 +198,7 @@ impl<'a> Translator<'a> {
 
     fn define_bind(&mut self, name: String) -> usize {
         let id = self.bind_cnt;
-        self.env.insert(name.clone(), id);
+        self.env.insert(name, id);
 
         self.bind_cnt += 1;
         id
@@ -155,44 +214,15 @@ impl<'a> Translator<'a> {
         )
     }
 
-    fn translate_block<S, F1, F2>(&mut self, binds: Vec<(S, F1)>, body_f: F2) -> Vec<Cmd>
-    where
-        S: ToString,
-        F1: Fn(&mut Self) -> Vec<Cmd>,
-        F2: Fn(&mut Self) -> Vec<Cmd>,
-    {
-        let mut cmd = Vec::new();
-        let mut b = Vec::new();
-        for (name, f) in binds.iter() {
-            let id = self.define_bind(name.to_string());
-            b.push((id, f));
+    fn translate(&'a mut self, v: &'a Statement) -> Vec<Cmd> {
+        let mut block = self.block();
+        for (name, body) in &v.definitions {
+            block.add_bind(name, move |translator: &mut Translator| {
+                translator.translate_expression(&body)
+            });
         }
-
-        let mut bind_cmds = Vec::new();
-        for (id, f) in b {
-            let mut body_cmd = f(self);
-            body_cmd.push(Cmd::Store(id));
-            body_cmd.push(Cmd::Return);
-            bind_cmds.push(body_cmd);
-        }
-
-        let mut body_cmd = body_f(self);
-
-        cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
-        cmd.append(&mut bind_cmds.into_iter().flatten().collect());
-        cmd.append(&mut body_cmd);
-        cmd.push(Cmd::ExitScope);
-        cmd
-    }
-
-    fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
-        self.translate_block(
-            v.definitions
-                .iter()
-                .map(|(n, b)| (n, move |translator: &mut Translator| translator.translate_expression(&b)))
-                .collect(),
-            |translator| translator.translate_expression(&v.body),
-        )
+        block.set_body(move |translator| translator.translate_expression(&v.body));
+        block.finalize()
     }
 
     fn translate_expression(&mut self, v: &Expression) -> Vec<Cmd> {
@@ -346,26 +376,30 @@ impl<'a> Translator<'a> {
             }
             Primary::Block(definitions) => {
                 let l = definitions.len();
-                self.fork().translate_block(
-                    definitions
-                        .iter()
-                        .map(|(n, b)| (n, move |translator: &mut Translator| translator.translate_expression(&b)))
-                        .collect(),
-                    |translator| {
-                        let mut cmd = Vec::new();
-                        let mut load_cmds = Vec::new();
-                        for i in 0..l {
-                            load_cmds.push(Cmd::Load(i, 0));
-                            load_cmds.push(Cmd::Return);
-                        }
-                        cmd.push(Cmd::ConstructBlock(
-                            load_cmds.len(),
-                            Rc::new(translator.env.clone()),
-                        ));
-                        cmd.append(&mut load_cmds);
-                        cmd
-                    },
-                )
+                let mut translator = self.fork();
+                let mut block = translator.block();
+
+                for (name, body) in definitions.iter() {
+                    block.add_bind(name, move |translator: &mut Translator| {
+                        translator.translate_expression(body)
+                    });
+                }
+
+                block.set_body(move |translator| {
+                    let mut cmd = Vec::new();
+                    let mut load_cmds = Vec::new();
+                    for i in 0..l {
+                        load_cmds.push(Cmd::Load(i, 0));
+                        load_cmds.push(Cmd::Return);
+                    }
+                    cmd.push(Cmd::ConstructBlock(
+                        load_cmds.len(),
+                        Rc::new(translator.env.clone()),
+                    ));
+                    cmd.append(&mut load_cmds);
+                    cmd
+                });
+                block.finalize()
             }
             Primary::List(items) => {
                 let mut cmd = Vec::new();
