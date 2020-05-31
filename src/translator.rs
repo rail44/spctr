@@ -18,27 +18,15 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
         let mut translator = translator.fork();
         let mut block = translator.block();
 
-        block.add_bind("concat", |_| vec![
-            Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
-                let mut target = (*args.pop().unwrap().into_list().unwrap()).clone();
-                let mut dst = (*args.pop().unwrap().into_list().unwrap()).clone();
-                target.append(&mut dst);
-                Value::list(Rc::new(target))
-            })))
-        ]);
-        block.set_body(move |translator| {
-            let mut cmd = Vec::new();
-            let mut load_cmds = Vec::new();
-            for i in 0..1 {
-                load_cmds.push(Cmd::Load(i, 0));
-                load_cmds.push(Cmd::Return);
-            }
-            cmd.push(Cmd::ConstructBlock(
-                load_cmds.len(),
-                Rc::new(translator.env.clone()),
-            ));
-            cmd.append(&mut load_cmds);
-            cmd
+        block.add_bind("concat", |_| {
+            vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(
+                move |_, mut args| {
+                    let mut target = (*args.pop().unwrap().into_list().unwrap()).clone();
+                    let mut dst = (*args.pop().unwrap().into_list().unwrap()).clone();
+                    target.append(&mut dst);
+                    Value::list(Rc::new(target))
+                },
+            )))]
         });
         block.finalize()
     });
@@ -47,26 +35,14 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
         let mut translator = translator.fork();
         let mut block = translator.block();
 
-        block.add_bind("concat", |_| vec![
-            Cmd::ForeignFunction(ForeignFunction(Rc::new(move |_, mut args| {
-                let target = args.pop().unwrap().into_string().unwrap();
-                let dst = args.pop().unwrap().into_string().unwrap();
-                Value::string(Rc::new(format!("{}{}", target, dst)))
-            })))
-        ]);
-        block.set_body(move |translator| {
-            let mut cmd = Vec::new();
-            let mut load_cmds = Vec::new();
-            for i in 0..1 {
-                load_cmds.push(Cmd::Load(i, 0));
-                load_cmds.push(Cmd::Return);
-            }
-            cmd.push(Cmd::ConstructBlock(
-                load_cmds.len(),
-                Rc::new(translator.env.clone()),
-            ));
-            cmd.append(&mut load_cmds);
-            cmd
+        block.add_bind("concat", |_| {
+            vec![Cmd::ForeignFunction(ForeignFunction(Rc::new(
+                move |_, mut args| {
+                    let target = args.pop().unwrap().into_string().unwrap();
+                    let dst = args.pop().unwrap().into_string().unwrap();
+                    Value::string(Rc::new(format!("{}{}", target, dst)))
+                },
+            )))]
         });
         block.finalize()
     });
@@ -101,6 +77,7 @@ impl<'a> BlockTranslator<'a> {
     fn finalize(self) -> Vec<Cmd> {
         let mut cmd = Vec::new();
         let mut b = Vec::new();
+        let l = self.bind_names.len();
         for name in self.bind_names {
             let id = self.translator.define_bind(name.to_string());
             b.push(id);
@@ -114,11 +91,27 @@ impl<'a> BlockTranslator<'a> {
             bind_cmds.push(body_cmd);
         }
 
-        let mut body_cmd = (self.body.unwrap())(self.translator);
-
         cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
         cmd.append(&mut bind_cmds.into_iter().flatten().collect());
-        cmd.append(&mut body_cmd);
+
+        let mut body = if let Some(body_cmd) = self.body {
+            (body_cmd)(self.translator)
+        } else {
+            let mut cmd = Vec::new();
+            let mut load_cmds = Vec::new();
+            for i in 0..l {
+                load_cmds.push(Cmd::Load(i, 0));
+                load_cmds.push(Cmd::Return);
+            }
+            cmd.push(Cmd::ConstructBlock(
+                load_cmds.len(),
+                Rc::new(self.translator.env.clone()),
+            ));
+            cmd.append(&mut load_cmds);
+            cmd
+        };
+
+        cmd.append(&mut body);
         cmd.push(Cmd::ExitScope);
         cmd
     }
@@ -338,7 +331,6 @@ impl<'a> Translator<'a> {
                 cmd
             }
             Primary::Block(definitions) => {
-                let l = definitions.len();
                 let mut translator = self.fork();
                 let mut block = translator.block();
 
@@ -347,21 +339,6 @@ impl<'a> Translator<'a> {
                         translator.translate_expression(body)
                     });
                 }
-
-                block.set_body(move |translator| {
-                    let mut cmd = Vec::new();
-                    let mut load_cmds = Vec::new();
-                    for i in 0..l {
-                        load_cmds.push(Cmd::Load(i, 0));
-                        load_cmds.push(Cmd::Return);
-                    }
-                    cmd.push(Cmd::ConstructBlock(
-                        load_cmds.len(),
-                        Rc::new(translator.env.clone()),
-                    ));
-                    cmd.append(&mut load_cmds);
-                    cmd
-                });
                 block.finalize()
             }
             Primary::List(items) => {
