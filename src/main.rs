@@ -1,6 +1,6 @@
 mod parser;
-mod stack;
 mod token;
+mod translator;
 mod vm;
 
 use crate::vm::Value;
@@ -32,6 +32,6 @@ fn eval(input: &str) -> Result<Value> {
     let token = parser::parse(&input)
         .map_err(|s| anyhow!("Parsing failed!, {}", s))?
         .1;
-    let cmd = stack::get_cmd(&token);
+    let cmd = translator::get_cmd(&token);
     vm::run(&cmd)
 }

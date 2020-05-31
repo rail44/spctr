@@ -137,6 +137,14 @@ impl<'a> Translator<'a> {
         }
     }
 
+    fn define_bind(&mut self, name: String) -> usize {
+        let id = self.bind_cnt;
+        self.env.insert(name.clone(), id);
+
+        self.bind_cnt += 1;
+        id
+    }
+
     fn get_bind(&self, name: &str) -> Option<(usize, usize)> {
         self.env.get(name).map_or_else(
             || {
@@ -147,33 +155,44 @@ impl<'a> Translator<'a> {
         )
     }
 
-    fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
+    fn translate_block<S, F1, F2>(&mut self, binds: Vec<(S, F1)>, body_f: F2) -> Vec<Cmd>
+    where
+        S: ToString,
+        F1: Fn(&mut Self) -> Vec<Cmd>,
+        F2: Fn(&mut Self) -> Vec<Cmd>,
+    {
         let mut cmd = Vec::new();
-
-        let mut binds = Vec::new();
-        for bind in v.definitions.iter() {
-            let id = self.bind_cnt;
-            self.env.insert(bind.0.clone(), id);
-
-            self.bind_cnt += 1;
-            binds.push((id, &bind.1));
+        let mut b = Vec::new();
+        for (name, f) in binds.iter() {
+            let id = self.define_bind(name.to_string());
+            b.push((id, f));
         }
 
         let mut bind_cmds = Vec::new();
-        for (id, body) in binds {
-            let mut body_cmd = self.translate_expression(&body);
+        for (id, f) in b {
+            let mut body_cmd = f(self);
             body_cmd.push(Cmd::Store(id));
             body_cmd.push(Cmd::Return);
             bind_cmds.push(body_cmd);
         }
 
-        let mut body_cmd = self.translate_expression(&v.body);
+        let mut body_cmd = body_f(self);
 
         cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
         cmd.append(&mut bind_cmds.into_iter().flatten().collect());
         cmd.append(&mut body_cmd);
         cmd.push(Cmd::ExitScope);
         cmd
+    }
+
+    fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
+        self.translate_block(
+            v.definitions
+                .iter()
+                .map(|(n, b)| (n, move |translator: &mut Translator| translator.translate_expression(&b)))
+                .collect(),
+            |translator| translator.translate_expression(&v.body),
+        )
     }
 
     fn translate_expression(&mut self, v: &Expression) -> Vec<Cmd> {
@@ -307,12 +326,11 @@ impl<'a> Translator<'a> {
                 let mut translator = self.fork();
                 translator.translate(statement)
             }
-            Primary::Function(args, body) => {
+            Primary::Function(arg_names, body) => {
                 let mut translator = self.fork();
                 let mut body_cmd = Vec::new();
-                for arg in args {
-                    translator.env.insert(arg.clone(), translator.bind_cnt);
-                    translator.bind_cnt += 1;
+                for arg in arg_names {
+                    translator.define_bind(arg.clone());
                 }
 
                 body_cmd.append(&mut translator.translate_expression(body));
@@ -327,39 +345,27 @@ impl<'a> Translator<'a> {
                 cmd
             }
             Primary::Block(definitions) => {
-                let mut binds = Vec::new();
-                let mut translator = self.fork();
-                let mut load_cmds = Vec::new();
-
-                for bind in definitions.iter() {
-                    let id = translator.bind_cnt;
-                    translator.env.insert(bind.0.clone(), id);
-
-                    translator.bind_cnt += 1;
-
-                    load_cmds.push(Cmd::Load(id, 0));
-                    load_cmds.push(Cmd::Return);
-                    binds.push((id, &bind.1));
-                }
-
-                let mut bind_cmds = Vec::new();
-                for (id, body) in binds {
-                    let mut body_cmd = translator.translate_expression(&body);
-                    body_cmd.push(Cmd::Store(id));
-                    body_cmd.push(Cmd::Return);
-                    bind_cmds.push(body_cmd);
-                }
-
-                let mut cmd = Vec::new();
-                cmd.push(Cmd::Block(bind_cmds.iter().map(|cmd| cmd.len()).collect()));
-                cmd.append(&mut bind_cmds.into_iter().flatten().collect());
-                cmd.push(Cmd::ConstructBlock(
-                    load_cmds.len(),
-                    Rc::new(translator.env),
-                ));
-                cmd.append(&mut load_cmds);
-                cmd.push(Cmd::ExitScope);
-                cmd
+                let l = definitions.len();
+                self.fork().translate_block(
+                    definitions
+                        .iter()
+                        .map(|(n, b)| (n, move |translator: &mut Translator| translator.translate_expression(&b)))
+                        .collect(),
+                    |translator| {
+                        let mut cmd = Vec::new();
+                        let mut load_cmds = Vec::new();
+                        for i in 0..l {
+                            load_cmds.push(Cmd::Load(i, 0));
+                            load_cmds.push(Cmd::Return);
+                        }
+                        cmd.push(Cmd::ConstructBlock(
+                            load_cmds.len(),
+                            Rc::new(translator.env.clone()),
+                        ));
+                        cmd.append(&mut load_cmds);
+                        cmd
+                    },
+                )
             }
             Primary::List(items) => {
                 let mut cmd = Vec::new();
