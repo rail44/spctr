@@ -5,7 +5,7 @@ use std::fmt;
 use std::mem;
 use std::rc::Rc;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Cmd {
     Add,
     Sub,
@@ -25,7 +25,7 @@ pub enum Cmd {
     ConstructList(usize),
     ConstructFunction(usize, usize),
     ConstructBlock(usize, Rc<HashMap<String, usize>>),
-    ForeignFunction(ForeignFunction),
+    ConstructForeignFunction(Rc<dyn Fn(&Scope, Vec<Value>) -> Value>, Rc<HashMap<String, usize>>),
     JumpRel(usize),
     JumpRelUnless(usize),
     Call(usize),
@@ -36,7 +36,7 @@ pub enum Cmd {
 }
 
 #[derive(Clone)]
-pub struct ForeignFunction(pub Rc<dyn Fn(&Scope, Vec<Value>) -> Value>);
+pub struct ForeignFunction(pub Rc<dyn Fn(&Scope, Vec<Value>) -> Value>, Scope, Rc<HashMap<String, usize>>);
 
 impl fmt::Debug for ForeignFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -259,7 +259,7 @@ impl<'a> VM<'a> {
                 Load(i, depth) => self.load(i, depth)?,
                 Store(i) => self.store(i)?,
                 ConstructFunction(id, len) => self.function(id, len)?,
-                Cmd::ForeignFunction(ref func) => self.foreign_function(func.clone())?,
+                ConstructForeignFunction(ref func, map) => self.foreign_function(func.clone(), map.clone())?,
                 ConstructBlock(len, ref map) => self.construct_block(len, map.clone())?,
                 Call(arg_len) => self.call(arg_len)?,
                 Access => self.access()?,
@@ -459,8 +459,8 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    fn foreign_function(&mut self, func: ForeignFunction) -> Result<()> {
-        self.stack.push(Value::function(Function::Foreign(func)));
+    fn foreign_function(&mut self, func: Rc<dyn Fn(&Scope, Vec<Value>) -> Value>, map: Rc<HashMap<String, usize>>) -> Result<()> {
+        self.stack.push(Value::function(Function::Foreign(ForeignFunction(func, self.scope.clone(), map))));
         self.i += 1;
         Ok(())
     }
@@ -514,9 +514,9 @@ impl<'a> VM<'a> {
                 self.i = addr;
                 Ok(())
             }
-            Function::Foreign(func) => {
+            Function::Foreign(ForeignFunction(func, scope, map)) => {
                 args.reverse();
-                self.stack.push(func.0(&self.scope, args));
+                self.stack.push(func(&scope, args));
                 self.i += 1;
                 Ok(())
             }
