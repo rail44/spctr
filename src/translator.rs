@@ -1,7 +1,7 @@
 use crate::lib;
 use crate::parser;
 use crate::token::*;
-use crate::vm::Cmd;
+use crate::vm::{Cmd, Scope, Value};
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -331,5 +331,15 @@ impl<'a> Translator<'a> {
         let mut cmd = Vec::new();
         cmd.push(Cmd::Load(id, depth));
         cmd
+    }
+
+    pub fn translate_foreign<F>(&self, f: F) -> Vec<Cmd>
+    where
+        F: Fn(&Scope, Vec<Value>) -> Value + 'static,
+    {
+        vec![Cmd::ConstructForeignFunction(
+            Rc::new(f),
+            Rc::new(self.env.clone()),
+        )]
     }
 }

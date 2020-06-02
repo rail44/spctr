@@ -25,7 +25,7 @@ pub enum Cmd {
     ConstructList(usize),
     ConstructFunction(usize, usize),
     ConstructBlock(usize, Rc<HashMap<String, usize>>),
-    ConstructForeignFunction(Rc<dyn Fn(&Scope, Vec<Value>) -> Value>, Rc<HashMap<String, usize>>),
+    ConstructForeignFunction(ForeignFunction, Rc<HashMap<String, usize>>),
     JumpRel(usize),
     JumpRelUnless(usize),
     Call(usize),
@@ -35,14 +35,7 @@ pub enum Cmd {
     Return,
 }
 
-#[derive(Clone)]
-pub struct ForeignFunction(pub Rc<dyn Fn(&Scope, Vec<Value>) -> Value>, Scope, Rc<HashMap<String, usize>>);
-
-impl fmt::Debug for ForeignFunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[native function]")
-    }
-}
+pub type ForeignFunction = Rc<dyn Fn(&Scope, Vec<Value>) -> Value>;
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -98,10 +91,16 @@ impl PartialEq for Value {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Function {
     Native(usize, usize, Scope),
-    Foreign(ForeignFunction),
+    Foreign(ForeignFunction, Scope, Rc<HashMap<String, usize>>),
+}
+
+impl fmt::Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[function]")
+    }
 }
 
 impl Value {
@@ -259,7 +258,9 @@ impl<'a> VM<'a> {
                 Load(i, depth) => self.load(i, depth)?,
                 Store(i) => self.store(i)?,
                 ConstructFunction(id, len) => self.function(id, len)?,
-                ConstructForeignFunction(ref func, map) => self.foreign_function(func.clone(), map.clone())?,
+                ConstructForeignFunction(ref func, ref map) => {
+                    self.foreign_function(func.clone(), map.clone())?
+                }
                 ConstructBlock(len, ref map) => self.construct_block(len, map.clone())?,
                 Call(arg_len) => self.call(arg_len)?,
                 Access => self.access()?,
@@ -459,8 +460,16 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    fn foreign_function(&mut self, func: Rc<dyn Fn(&Scope, Vec<Value>) -> Value>, map: Rc<HashMap<String, usize>>) -> Result<()> {
-        self.stack.push(Value::function(Function::Foreign(ForeignFunction(func, self.scope.clone(), map))));
+    fn foreign_function(
+        &mut self,
+        func: Rc<dyn Fn(&Scope, Vec<Value>) -> Value>,
+        map: Rc<HashMap<String, usize>>,
+    ) -> Result<()> {
+        self.stack.push(Value::function(Function::Foreign(
+            func,
+            self.scope.clone(),
+            map,
+        )));
         self.i += 1;
         Ok(())
     }
@@ -514,7 +523,7 @@ impl<'a> VM<'a> {
                 self.i = addr;
                 Ok(())
             }
-            Function::Foreign(ForeignFunction(func, scope, map)) => {
+            Function::Foreign(func, scope, _map) => {
                 args.reverse();
                 self.stack.push(func(&scope, args));
                 self.i += 1;
