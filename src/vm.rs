@@ -1,3 +1,4 @@
+use crate::translator::Translator;
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -25,7 +26,7 @@ pub enum Cmd {
     ConstructList(usize),
     ConstructFunction(usize, usize),
     ConstructBlock(usize, Rc<HashMap<String, usize>>),
-    ConstructForeignFunction(ForeignFunction, Rc<HashMap<String, usize>>),
+    ConstructForeignFunction(ForeignFunction, Translator),
     JumpRel(usize),
     JumpRelUnless(usize),
     Call(usize),
