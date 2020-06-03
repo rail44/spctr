@@ -6,6 +6,30 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Env(Option<Rc<(HashMap<String, usize>, Env)>>);
+
+impl Env {
+    fn push(&mut self, map: HashMap<String, usize>) {
+        self.0 = Some(Rc::new((map, Env(self.0.take()))));
+    }
+
+    fn pop(&mut self) -> HashMap<String, usize> {
+        let rc = self.0.take().unwrap();
+        let (head, tail) = Rc::try_unwrap(rc).unwrap_or_else(|rc| (*rc).clone());
+        *self = tail;
+        head
+    }
+
+    fn nth_parent(&self, n: usize) -> &Env {
+        if n == 0 {
+            return self;
+        }
+        let p: &Env = &self.0.as_ref().unwrap().1;
+        p.nth_parent(n - 1)
+    }
+}
+
 pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
     let mut translator = Translator::new();
     let mut block = translator.block();
@@ -76,7 +100,7 @@ impl<'a> BlockTranslator<'a> {
             }
             cmd.push(Cmd::ConstructBlock(
                 load_cmds.len(),
-                Rc::new(self.translator.env.clone()),
+                Rc::new(self.translator.env.clone().pop()),
             ));
             cmd.append(&mut load_cmds);
             cmd
@@ -89,7 +113,7 @@ impl<'a> BlockTranslator<'a> {
 }
 
 pub struct Translator<'a> {
-    env: HashMap<String, usize>,
+    env: Env,
     bind_cnt: usize,
     parent: Option<&'a Translator<'a>>,
     function_id: Rc<Cell<usize>>,
@@ -98,7 +122,7 @@ pub struct Translator<'a> {
 impl<'a> Translator<'a> {
     fn new() -> Translator<'a> {
         Translator {
-            env: HashMap::new(),
+            env: Env(None),
             bind_cnt: 0,
             parent: None,
             function_id: Rc::new(Cell::new(0)),
@@ -116,7 +140,7 @@ impl<'a> Translator<'a> {
 
     pub fn fork(&'a self) -> Translator<'a> {
         Translator {
-            env: HashMap::new(),
+            env: self.env.fork(),
             bind_cnt: 0,
             parent: Some(self),
             function_id: self.function_id.clone(),
