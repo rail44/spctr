@@ -1,4 +1,4 @@
-use crate::translator::Translator;
+use crate::translator::Env;
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -26,7 +26,7 @@ pub enum Cmd {
     ConstructList(usize),
     ConstructFunction(usize, usize),
     ConstructBlock(usize, Rc<HashMap<String, usize>>),
-    ConstructForeignFunction(ForeignFunction, Translator),
+    ConstructForeignFunction(ForeignFunction, Env),
     JumpRel(usize),
     JumpRelUnless(usize),
     Call(usize),
@@ -95,7 +95,7 @@ impl PartialEq for Value {
 #[derive(Clone)]
 pub enum Function {
     Native(usize, usize, Scope),
-    Foreign(ForeignFunction, Scope, Rc<HashMap<String, usize>>),
+    Foreign(ForeignFunction, Scope, Env),
 }
 
 impl fmt::Debug for Function {
@@ -464,12 +464,12 @@ impl<'a> VM<'a> {
     fn foreign_function(
         &mut self,
         func: Rc<dyn Fn(&Scope, Vec<Value>) -> Value>,
-        map: Rc<HashMap<String, usize>>,
+        env: Env,
     ) -> Result<()> {
         self.stack.push(Value::function(Function::Foreign(
             func,
             self.scope.clone(),
-            map,
+            env,
         )));
         self.i += 1;
         Ok(())

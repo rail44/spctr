@@ -21,12 +21,12 @@ impl Env {
         head
     }
 
-    fn nth_parent(&self, n: usize) -> &Env {
-        if n == 0 {
-            return self;
-        }
-        let p: &Env = &self.0.as_ref().unwrap().1;
-        p.nth_parent(n - 1)
+    fn get_bind(&self, name: &str) -> Option<(usize, usize)> {
+        let rc = self.0.as_ref().unwrap();
+        rc.0.get(name).map_or_else(
+            || rc.1.get_bind(name),
+            |addr| Some((*addr, 0))
+        )
     }
 }
 
@@ -36,17 +36,17 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
 
     block.add_bind("Iterator", |translator| {
         let token = parser::parse(include_str!("lib/iterator.spc")).unwrap().1;
-        translator.fork().translate(&token)
+        translator.translate(&token)
     });
 
     block.add_bind("List", lib::list::get_module);
     block.add_bind("String", lib::string::get_module);
-    block.set_body(|translator| translator.fork().translate(ast));
+    block.set_body(|translator| translator.translate(ast));
     block.finalize()
 }
 
 pub struct BlockTranslator<'a> {
-    translator: &'a mut Translator<'a>,
+    translator: &'a mut Translator,
     bind_names: Vec<String>,
     bind_bodies: Vec<Box<dyn FnOnce(&mut Translator) -> Vec<Cmd> + 'a>>,
     body: Option<Box<dyn FnOnce(&mut Translator) -> Vec<Cmd> + 'a>>,
@@ -73,14 +73,18 @@ impl<'a> BlockTranslator<'a> {
         let mut cmd = Vec::new();
         let mut b = Vec::new();
         let l = self.bind_names.len();
+        let mut map = HashMap::new();
         for name in self.bind_names {
-            let id = self.translator.define_bind(name.to_string());
+            let id = self.translator.bind_cnt;
+            map.insert(name, self.translator.bind_cnt);
+            self.translator.bind_cnt += 1;
             b.push(id);
         }
 
+        let mut translator = self.translator.fork(map);
         let mut bind_cmds = Vec::new();
         for (id, f) in b.into_iter().zip(self.bind_bodies) {
-            let mut body_cmd = f(self.translator);
+            let mut body_cmd = f(&mut translator);
             body_cmd.push(Cmd::Store(id));
             body_cmd.push(Cmd::Return);
             bind_cmds.push(body_cmd);
@@ -90,7 +94,7 @@ impl<'a> BlockTranslator<'a> {
         cmd.append(&mut bind_cmds.into_iter().flatten().collect());
 
         let mut body = if let Some(body_cmd) = self.body {
-            (body_cmd)(self.translator)
+            (body_cmd)(&mut translator)
         } else {
             let mut cmd = Vec::new();
             let mut load_cmds = Vec::new();
@@ -100,7 +104,7 @@ impl<'a> BlockTranslator<'a> {
             }
             cmd.push(Cmd::ConstructBlock(
                 load_cmds.len(),
-                Rc::new(self.translator.env.clone().pop()),
+                Rc::new(translator.env.clone().pop()),
             ));
             cmd.append(&mut load_cmds);
             cmd
@@ -112,24 +116,22 @@ impl<'a> BlockTranslator<'a> {
     }
 }
 
-pub struct Translator<'a> {
+pub struct Translator {
     env: Env,
     bind_cnt: usize,
-    parent: Option<&'a Translator<'a>>,
     function_id: Rc<Cell<usize>>,
 }
 
-impl<'a> Translator<'a> {
-    fn new() -> Translator<'a> {
+impl Translator {
+    fn new() -> Translator {
         Translator {
             env: Env(None),
             bind_cnt: 0,
-            parent: None,
             function_id: Rc::new(Cell::new(0)),
         }
     }
 
-    pub fn block(&'a mut self) -> BlockTranslator<'a> {
+    pub fn block(&mut self) -> BlockTranslator {
         BlockTranslator {
             translator: self,
             bind_bodies: Vec::new(),
@@ -138,34 +140,21 @@ impl<'a> Translator<'a> {
         }
     }
 
-    pub fn fork(&'a self) -> Translator<'a> {
+    pub fn fork(&self, map: HashMap<String, usize>) -> Translator {
+        let mut forked_env = self.env.clone();
+        forked_env.push(map);
         Translator {
-            env: self.env.fork(),
+            env: forked_env,
             bind_cnt: 0,
-            parent: Some(self),
             function_id: self.function_id.clone(),
         }
     }
 
-    fn define_bind(&mut self, name: String) -> usize {
-        let id = self.bind_cnt;
-        self.env.insert(name, id);
-
-        self.bind_cnt += 1;
-        id
-    }
-
     fn get_bind(&self, name: &str) -> Option<(usize, usize)> {
-        self.env.get(name).map_or_else(
-            || {
-                self.parent
-                    .and_then(|p| p.get_bind(name).map(|(addr, depth)| (addr, depth + 1)))
-            },
-            |addr| Some((*addr, 0)),
-        )
+        self.env.get_bind(name)
     }
 
-    fn translate(&'a mut self, v: &'a Statement) -> Vec<Cmd> {
+    fn translate(&mut self, v: &Statement) -> Vec<Cmd> {
         let mut block = self.block();
         for (name, body) in &v.definitions {
             block.add_bind(name, move |translator: &mut Translator| {
@@ -304,30 +293,31 @@ impl<'a> Translator<'a> {
             Primary::String(s) => vec![Cmd::StringConst(Rc::new(s.clone()))],
             Primary::Variable(name) => self.translate_identifier(name),
             Primary::ImmediateBlock(statement) => {
-                let mut translator = self.fork();
-                translator.translate(statement)
+                self.translate(statement)
             }
             Primary::Function(arg_names, body) => {
-                let mut translator = self.fork();
                 let mut body_cmd = Vec::new();
+                let mut map = HashMap::new();
                 for arg in arg_names {
-                    translator.define_bind(arg.clone());
+                    let id = self.bind_cnt;
+                    map.insert(arg.to_string(), id);
+                    self.bind_cnt += 1;
                 }
+                let mut translator = self.fork(map);
 
                 body_cmd.append(&mut translator.translate_expression(body));
                 body_cmd.push(Cmd::ExitScope);
                 body_cmd.push(Cmd::Return);
 
                 let mut cmd = Vec::new();
-                let id = self.function_id.get();
+                let id = translator.function_id.get();
                 cmd.push(Cmd::ConstructFunction(id, body_cmd.len()));
-                self.function_id.set(id + 1);
+                translator.function_id.set(id + 1);
                 cmd.append(&mut body_cmd);
                 cmd
             }
             Primary::Block(definitions) => {
-                let mut translator = self.fork();
-                let mut block = translator.block();
+                let mut block = self.block();
 
                 for (name, body) in definitions.iter() {
                     block.add_bind(name, move |translator: &mut Translator| {
@@ -363,7 +353,8 @@ impl<'a> Translator<'a> {
     {
         vec![Cmd::ConstructForeignFunction(
             Rc::new(f),
-            Rc::new(self.env.clone()),
+            self.env.clone(),
         )]
     }
+
 }
