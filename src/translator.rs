@@ -1,7 +1,7 @@
 use crate::lib;
 use crate::parser;
 use crate::token::*;
-use crate::vm::{Cmd, Scope, Value};
+use crate::vm::{Cmd, Scope, Value, ForeignFunction};
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -41,6 +41,7 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
 
     block.add_bind("List", lib::list::get_module);
     block.add_bind("String", lib::string::get_module);
+
     block.set_body(|translator| translator.translate(ast));
     block.finalize()
 }
@@ -74,11 +75,11 @@ impl<'a> BlockTranslator<'a> {
         let mut b = Vec::new();
         let l = self.bind_names.len();
         let mut map = HashMap::new();
+        let mut id = 0;
         for name in self.bind_names {
-            let id = self.translator.bind_cnt;
-            map.insert(name, self.translator.bind_cnt);
-            self.translator.bind_cnt += 1;
+            map.insert(name, id);
             b.push(id);
+            id += 1;
         }
 
         let mut translator = self.translator.fork(map);
@@ -118,7 +119,6 @@ impl<'a> BlockTranslator<'a> {
 
 pub struct Translator {
     env: Env,
-    bind_cnt: usize,
     function_id: Rc<Cell<usize>>,
 }
 
@@ -126,7 +126,6 @@ impl Translator {
     fn new() -> Translator {
         Translator {
             env: Env(None),
-            bind_cnt: 0,
             function_id: Rc::new(Cell::new(0)),
         }
     }
@@ -145,7 +144,6 @@ impl Translator {
         forked_env.push(map);
         Translator {
             env: forked_env,
-            bind_cnt: 0,
             function_id: self.function_id.clone(),
         }
     }
@@ -298,10 +296,10 @@ impl Translator {
             Primary::Function(arg_names, body) => {
                 let mut body_cmd = Vec::new();
                 let mut map = HashMap::new();
+                let mut id = 0;
                 for arg in arg_names {
-                    let id = self.bind_cnt;
                     map.insert(arg.to_string(), id);
-                    self.bind_cnt += 1;
+                    id += 1;
                 }
                 let mut translator = self.fork(map);
 
@@ -352,7 +350,7 @@ impl Translator {
         F: Fn(&Scope, Vec<Value>) -> Value + 'static,
     {
         vec![Cmd::ConstructForeignFunction(
-            Rc::new(f),
+            ForeignFunction(Rc::new(f)),
             self.env.clone(),
         )]
     }

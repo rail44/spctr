@@ -6,7 +6,7 @@ use std::fmt;
 use std::mem;
 use std::rc::Rc;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Cmd {
     Add,
     Sub,
@@ -36,7 +36,14 @@ pub enum Cmd {
     Return,
 }
 
-pub type ForeignFunction = Rc<dyn Fn(&Scope, Vec<Value>) -> Value>;
+#[derive(Clone)]
+pub struct ForeignFunction(pub Rc<dyn Fn(&Scope, Vec<Value>) -> Value>);
+
+impl fmt::Debug for ForeignFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[foreign function]")
+    }
+}
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -463,7 +470,7 @@ impl<'a> VM<'a> {
 
     fn foreign_function(
         &mut self,
-        func: Rc<dyn Fn(&Scope, Vec<Value>) -> Value>,
+        func: ForeignFunction,
         env: Env,
     ) -> Result<()> {
         self.stack.push(Value::function(Function::Foreign(
@@ -526,7 +533,7 @@ impl<'a> VM<'a> {
             }
             Function::Foreign(func, scope, _map) => {
                 args.reverse();
-                self.stack.push(func(&scope, args));
+                self.stack.push(func.0(&scope, args));
                 self.i += 1;
                 Ok(())
             }
