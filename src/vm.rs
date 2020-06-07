@@ -1,4 +1,3 @@
-use crate::translator::Env;
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -26,7 +25,7 @@ pub enum Cmd {
     ConstructList(usize),
     ConstructFunction(usize, usize),
     ConstructBlock(usize, Rc<HashMap<String, usize>>),
-    ConstructForeignFunction(ForeignFunction, Env),
+    ConstructForeignFunction(ForeignFunction),
     JumpRel(usize),
     JumpRelUnless(usize),
     Call(usize),
@@ -37,7 +36,7 @@ pub enum Cmd {
 }
 
 #[derive(Clone)]
-pub struct ForeignFunction(pub Rc<dyn Fn(&Scope, Vec<Value>) -> Value>);
+pub struct ForeignFunction(pub Rc<dyn Fn(Vec<Value>) -> Value>);
 
 impl fmt::Debug for ForeignFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -102,7 +101,7 @@ impl PartialEq for Value {
 #[derive(Clone)]
 pub enum Function {
     Native(usize, usize, Scope),
-    Foreign(ForeignFunction, Scope, Env),
+    Foreign(ForeignFunction),
 }
 
 impl fmt::Debug for Function {
@@ -266,9 +265,7 @@ impl<'a> VM<'a> {
                 Load(i, depth) => self.load(i, depth)?,
                 Store(i) => self.store(i)?,
                 ConstructFunction(id, len) => self.function(id, len)?,
-                ConstructForeignFunction(ref func, ref map) => {
-                    self.foreign_function(func.clone(), map.clone())?
-                }
+                ConstructForeignFunction(ref func) => self.foreign_function(func.clone())?,
                 ConstructBlock(len, ref map) => self.construct_block(len, map.clone())?,
                 Call(arg_len) => self.call(arg_len)?,
                 Access => self.access()?,
@@ -468,16 +465,8 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    fn foreign_function(
-        &mut self,
-        func: ForeignFunction,
-        env: Env,
-    ) -> Result<()> {
-        self.stack.push(Value::function(Function::Foreign(
-            func,
-            self.scope.clone(),
-            env,
-        )));
+    fn foreign_function(&mut self, func: ForeignFunction) -> Result<()> {
+        self.stack.push(Value::function(Function::Foreign(func)));
         self.i += 1;
         Ok(())
     }
@@ -531,9 +520,9 @@ impl<'a> VM<'a> {
                 self.i = addr;
                 Ok(())
             }
-            Function::Foreign(func, scope, _map) => {
+            Function::Foreign(func) => {
                 args.reverse();
-                self.stack.push(func.0(&scope, args));
+                self.stack.push(func.0(args));
                 self.i += 1;
                 Ok(())
             }

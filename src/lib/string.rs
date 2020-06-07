@@ -1,5 +1,5 @@
 use crate::translator::Translator;
-use crate::vm::{Cmd, Scope, Value};
+use crate::vm::{Cmd, Value};
 use std::rc::Rc;
 
 pub fn get_module(translator: &mut Translator) -> Vec<Cmd> {
@@ -9,7 +9,7 @@ pub fn get_module(translator: &mut Translator) -> Vec<Cmd> {
     block.finalize()
 }
 
-fn concat(_: &Scope, mut args: Vec<Value>) -> Value {
+fn concat(mut args: Vec<Value>) -> Value {
     let target = args.pop().unwrap().into_string().unwrap();
     let dst = args.pop().unwrap().into_string().unwrap();
     Value::string(Rc::new(format!("{}{}", target, dst)))
