@@ -8,3 +8,6 @@ edition = "2018"
 clap = "2.33.1"
 nom = "5.1.1"
 anyhow = "1.0.31"
+
+# [profile.release]
+# debug = true

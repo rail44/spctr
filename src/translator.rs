@@ -2,7 +2,6 @@ use crate::lib;
 use crate::parser;
 use crate::token::*;
 use crate::vm::{Cmd, ForeignFunction, Value};
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -117,15 +116,11 @@ impl<'a> BlockTranslator<'a> {
 
 pub struct Translator {
     env: Env,
-    function_id: Rc<Cell<usize>>,
 }
 
 impl Translator {
     fn new() -> Translator {
-        Translator {
-            env: Env(None),
-            function_id: Rc::new(Cell::new(0)),
-        }
+        Translator { env: Env(None) }
     }
 
     pub fn block(&mut self) -> BlockTranslator {
@@ -140,10 +135,7 @@ impl Translator {
     pub fn fork(&self, map: HashMap<String, usize>) -> Translator {
         let mut forked_env = self.env.clone();
         forked_env.push(map);
-        Translator {
-            env: forked_env,
-            function_id: self.function_id.clone(),
-        }
+        Translator { env: forked_env }
     }
 
     fn get_bind(&self, name: &str) -> Option<(usize, usize)> {
@@ -292,19 +284,16 @@ impl Translator {
             Primary::Function(arg_names, body) => {
                 let mut body_cmd = Vec::new();
                 let mut map = HashMap::new();
-                for (id, arg) in arg_names.into_iter().enumerate() {
+                for (id, arg) in arg_names.iter().enumerate() {
                     map.insert(arg.to_string(), id);
                 }
                 let mut translator = self.fork(map);
 
                 body_cmd.append(&mut translator.translate_expression(body));
-                body_cmd.push(Cmd::ExitScope);
                 body_cmd.push(Cmd::Return);
 
                 let mut cmd = Vec::new();
-                let id = translator.function_id.get();
-                cmd.push(Cmd::ConstructFunction(id, body_cmd.len()));
-                translator.function_id.set(id + 1);
+                cmd.push(Cmd::ConstructFunction(body_cmd.len()));
                 cmd.append(&mut body_cmd);
                 cmd
             }

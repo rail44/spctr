@@ -23,7 +23,7 @@ pub enum Cmd {
     StringConst(Rc<String>),
     NullConst,
     ConstructList(usize),
-    ConstructFunction(usize, usize),
+    ConstructFunction(usize),
     ConstructBlock(usize, Rc<HashMap<String, usize>>),
     ConstructForeignFunction(ForeignFunction),
     JumpRel(usize),
@@ -100,7 +100,7 @@ impl PartialEq for Value {
 
 #[derive(Clone)]
 pub enum Function {
-    Native(usize, usize, Scope),
+    Native(usize, Scope),
     Foreign(ForeignFunction),
 }
 
@@ -221,7 +221,7 @@ pub fn run(program: &[Cmd]) -> Result<Value> {
 
 struct VM<'a> {
     scope: Scope,
-    call_stack: Vec<(Option<usize>, usize, Scope)>,
+    call_stack: Vec<(usize, Scope)>,
     stack: Vec<Value>,
     i: usize,
     program: &'a [Cmd],
@@ -264,7 +264,7 @@ impl<'a> VM<'a> {
                 JumpRelUnless(n) => self.jump_rel_unless(n)?,
                 Load(i, depth) => self.load(i, depth)?,
                 Store(i) => self.store(i)?,
-                ConstructFunction(id, len) => self.function(id, len)?,
+                ConstructFunction(len) => self.function(len)?,
                 ConstructForeignFunction(ref func) => self.foreign_function(func.clone())?,
                 ConstructBlock(len, ref map) => self.construct_block(len, map.clone())?,
                 Call(arg_len) => self.call(arg_len)?,
@@ -428,7 +428,7 @@ impl<'a> VM<'a> {
                 let scope = scope.clone();
                 let ret_scope = mem::replace(&mut self.scope, scope);
 
-                self.call_stack.push((None, ret_i, ret_scope));
+                self.call_stack.push((ret_i, ret_scope));
                 self.i = addr;
                 Ok(())
             }
@@ -436,7 +436,7 @@ impl<'a> VM<'a> {
     }
 
     fn return_(&mut self) -> Result<()> {
-        let (_, ret_i, ret_scope) = self.call_stack.pop().unwrap();
+        let (ret_i, ret_scope) = self.call_stack.pop().unwrap();
         self.i = ret_i;
         self.scope = ret_scope;
         Ok(())
@@ -454,10 +454,9 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    fn function(&mut self, id: usize, len: usize) -> Result<()> {
+    fn function(&mut self, len: usize) -> Result<()> {
         let body_base = self.i + 1;
         self.stack.push(Value::function(Function::Native(
-            id,
             body_base,
             self.scope.clone(),
         )));
@@ -483,40 +482,16 @@ impl<'a> VM<'a> {
         let mut args = self.stack.split_off(len);
 
         match self.stack.pop().unwrap().into_function()? {
-            Function::Native(id, addr, closure_scope) => {
+            Function::Native(addr, closure_scope) => {
                 let mut defs = Vec::new();
                 for arg in args {
                     defs.push(Rc::new(RefCell::new(Bind::Evalueated(arg))));
                 }
 
-                let mut stacked_scope = 0;
-                let next_cmd = self.program[(self.i + 1)..].iter().find(|cmd| match cmd {
-                    Cmd::ExitScope => {
-                        stacked_scope += 1;
-                        false
-                    }
-                    _ => true,
-                });
-
-                if let Some(Cmd::Return) = next_cmd {
-                    let current_func_stack = self.call_stack.iter().rev().find(|cs| cs.0.is_some());
-
-                    if let Some(cs) = current_func_stack {
-                        if id == cs.0.unwrap() && cs.2 == closure_scope {
-                            for _ in 0..stacked_scope {
-                                self.scope.pop();
-                            }
-                            self.scope.push(defs);
-                            self.i = addr;
-                            return Ok(());
-                        }
-                    }
-                }
-
                 let ret_scope = mem::replace(&mut self.scope, closure_scope);
                 self.scope.push(defs);
 
-                self.call_stack.push((Some(id), self.i + 1, ret_scope));
+                self.call_stack.push((self.i + 1, ret_scope));
                 self.i = addr;
                 Ok(())
             }
@@ -535,7 +510,7 @@ impl<'a> VM<'a> {
         let id = map.get(&*name).unwrap();
         let ret_scope = mem::replace(&mut self.scope, scope);
 
-        self.call_stack.push((None, self.i + 1, ret_scope));
+        self.call_stack.push((self.i + 1, ret_scope));
         self.i = id * 2 + addr;
         Ok(())
     }
