@@ -1,3 +1,4 @@
+use crate::translator::Env;
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -25,7 +26,7 @@ pub enum Cmd {
     ConstructList(usize),
     ConstructFunction(usize, usize),
     ConstructBlock(usize, Rc<HashMap<String, usize>>),
-    ForeignFunction(ForeignFunction),
+    ConstructForeignFunction(ForeignFunction, Env),
     JumpRel(usize),
     JumpRelUnless(usize),
     Call(usize),
@@ -40,7 +41,7 @@ pub struct ForeignFunction(pub Rc<dyn Fn(&Scope, Vec<Value>) -> Value>);
 
 impl fmt::Debug for ForeignFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[native function]")
+        write!(f, "[foreign function]")
     }
 }
 
@@ -98,10 +99,16 @@ impl PartialEq for Value {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Function {
     Native(usize, usize, Scope),
-    Foreign(ForeignFunction),
+    Foreign(ForeignFunction, Scope, Env),
+}
+
+impl fmt::Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[function]")
+    }
 }
 
 impl Value {
@@ -259,7 +266,9 @@ impl<'a> VM<'a> {
                 Load(i, depth) => self.load(i, depth)?,
                 Store(i) => self.store(i)?,
                 ConstructFunction(id, len) => self.function(id, len)?,
-                Cmd::ForeignFunction(ref func) => self.foreign_function(func.clone())?,
+                ConstructForeignFunction(ref func, ref map) => {
+                    self.foreign_function(func.clone(), map.clone())?
+                }
                 ConstructBlock(len, ref map) => self.construct_block(len, map.clone())?,
                 Call(arg_len) => self.call(arg_len)?,
                 Access => self.access()?,
@@ -459,8 +468,16 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    fn foreign_function(&mut self, func: ForeignFunction) -> Result<()> {
-        self.stack.push(Value::function(Function::Foreign(func)));
+    fn foreign_function(
+        &mut self,
+        func: ForeignFunction,
+        env: Env,
+    ) -> Result<()> {
+        self.stack.push(Value::function(Function::Foreign(
+            func,
+            self.scope.clone(),
+            env,
+        )));
         self.i += 1;
         Ok(())
     }
@@ -514,9 +531,9 @@ impl<'a> VM<'a> {
                 self.i = addr;
                 Ok(())
             }
-            Function::Foreign(func) => {
+            Function::Foreign(func, scope, _map) => {
                 args.reverse();
-                self.stack.push(func.0(&self.scope, args));
+                self.stack.push(func.0(&scope, args));
                 self.i += 1;
                 Ok(())
             }
