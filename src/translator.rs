@@ -24,7 +24,7 @@ impl Env {
     fn get_bind(&self, name: &str) -> Option<(usize, usize)> {
         let rc = self.0.as_ref().unwrap();
         rc.0.get(name).map_or_else(
-            || rc.1.get_bind(name),
+            || rc.1.get_bind(name).map(|(addr, depth)| (addr, depth + 1)),
             |addr| Some((*addr, 0))
         )
     }
