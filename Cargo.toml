@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33.3"
-nom = "5.1.2"
+nom = "6.1.2"
 anyhow = "1.0.32"
 
 # [profile.release]
