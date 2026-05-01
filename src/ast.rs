@@ -53,4 +53,3 @@ pub enum Expr {
     Index(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 }
 
-pub type AST = Statement;

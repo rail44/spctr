@@ -1,10 +1,9 @@
 mod ast;
 mod diag;
+mod eval;
 mod lexer;
 mod parser;
 mod stdlib;
-mod translator;
-mod vm;
 
 use anyhow::Result;
 use clap::{App, Arg};
@@ -37,21 +36,13 @@ fn main() -> Result<ExitCode> {
         }
     };
 
-    let cmd = match translator::get_cmd(&ast) {
-        Ok(cmd) => cmd,
-        Err(d) => {
-            diag::report(&filename, &source, &d);
-            return Ok(ExitCode::FAILURE);
-        }
-    };
-
-    match vm::run(&cmd) {
+    match eval::run(&ast) {
         Ok(v) => {
             println!("{}", v);
             Ok(ExitCode::SUCCESS)
         }
-        Err(e) => {
-            eprintln!("runtime error: {}", e);
+        Err(d) => {
+            diag::report(&filename, &source, &d);
             Ok(ExitCode::FAILURE)
         }
     }
