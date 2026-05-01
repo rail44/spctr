@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::diag::Diagnostic;
 use crate::lexer::Span;
+use crate::symbol::{display, intern, Symbol};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -22,7 +23,7 @@ pub enum Value {
 #[derive(Clone)]
 pub enum Function {
     Native {
-        params: Vec<String>,
+        params: Vec<Symbol>,
         body: Spanned<Expr>,
         env: Env,
     },
@@ -34,7 +35,7 @@ pub struct Env(Option<Rc<Frame>>);
 
 pub struct Frame {
     pub binds: Vec<Rc<RefCell<BindState>>>,
-    pub names: HashMap<String, u32>,
+    pub names: HashMap<Symbol, u32>,
     pub parent: Env,
 }
 
@@ -78,20 +79,20 @@ fn build_root_env() -> Env {
     let iter_expr = (Expr::ImmediateBlock(Box::new(iter_stmt)), 0..0);
 
     let mut binds: Vec<Rc<RefCell<BindState>>> = Vec::with_capacity(ROOT_NAMES.len());
-    let mut names: HashMap<String, u32> = HashMap::with_capacity(ROOT_NAMES.len());
+    let mut names: HashMap<Symbol, u32> = HashMap::with_capacity(ROOT_NAMES.len());
 
     binds.push(Rc::new(RefCell::new(BindState::Lazy(iter_expr))));
-    names.insert("Iterator".to_string(), 0);
+    names.insert(intern("Iterator"), 0);
 
     binds.push(Rc::new(RefCell::new(BindState::Done(
         crate::stdlib::list::module(),
     ))));
-    names.insert("List".to_string(), 1);
+    names.insert(intern("List"), 1);
 
     binds.push(Rc::new(RefCell::new(BindState::Done(
         crate::stdlib::string::module(),
     ))));
-    names.insert("String".to_string(), 2);
+    names.insert(intern("String"), 2);
 
     Env(Some(Rc::new(Frame {
         binds,
@@ -163,7 +164,7 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
             let bref = var.resolved.get().ok_or_else(|| {
                 Diagnostic::new(
                     span.clone(),
-                    format!("unresolved variable: {}", var.name),
+                    format!("unresolved variable: {}", display(var.name)),
                     "resolver did not run",
                 )
             })?;
@@ -235,7 +236,7 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
                     ))
                 }
             };
-            access_field(&frame, name, name_span)
+            access_field(&frame, *name, name_span)
         }
         Expr::Index(arr, idx) => {
             let av = interpret(arr, env)?;
@@ -245,11 +246,11 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
     }
 }
 
-fn access_field(frame: &Rc<Frame>, name: &str, span: &Span) -> EvalResult {
-    let slot = frame.names.get(name).ok_or_else(|| {
+fn access_field(frame: &Rc<Frame>, name: Symbol, span: &Span) -> EvalResult {
+    let slot = frame.names.get(&name).ok_or_else(|| {
         Diagnostic::new(
             span.clone(),
-            format!("no such field: {}", name),
+            format!("no such field: {}", display(name)),
             "field not found",
         )
     })?;
@@ -270,7 +271,7 @@ fn apply_index(arr: Value, idx: Value, span: &Span) -> EvalResult {
                 )
             })
         }
-        (Value::Block(frame), Value::String(s)) => access_field(&frame, &s, span),
+        (Value::Block(frame), Value::String(s)) => access_field(&frame, intern(&s), span),
         (a, i) => Err(Diagnostic::new(
             span.clone(),
             format!("cannot index {} by {}", a.type_name(), i.type_name()),
@@ -411,7 +412,7 @@ impl fmt::Display for Value {
             }
             Value::Function(_) => write!(f, "[function]"),
             Value::Block(b) => {
-                let mut names: Vec<&str> = b.names.keys().map(|s| s.as_str()).collect();
+                let mut names: Vec<&str> = b.names.keys().map(|s| display(*s)).collect();
                 names.sort();
                 write!(f, "{{{}}}", names.join(", "))
             }

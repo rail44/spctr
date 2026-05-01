@@ -1,26 +1,27 @@
 use crate::ast::*;
 use crate::diag::Diagnostic;
+use crate::symbol::{display, intern, Symbol};
 use std::collections::HashMap;
 
 pub fn resolve(stmt: &Statement, root_names: &[&str]) -> Result<(), Diagnostic> {
     let mut resolver = Resolver { scopes: Vec::new() };
-    let mut root_scope = HashMap::new();
+    let mut root_scope: HashMap<Symbol, u32> = HashMap::new();
     for (i, name) in root_names.iter().enumerate() {
-        root_scope.insert(name.to_string(), i as u32);
+        root_scope.insert(intern(name), i as u32);
     }
     resolver.scopes.push(root_scope);
     resolver.statement(stmt)
 }
 
 struct Resolver {
-    scopes: Vec<HashMap<String, u32>>,
+    scopes: Vec<HashMap<Symbol, u32>>,
 }
 
 impl Resolver {
     fn statement(&mut self, stmt: &Statement) -> Result<(), Diagnostic> {
-        let mut scope = HashMap::new();
+        let mut scope: HashMap<Symbol, u32> = HashMap::new();
         for (i, ((name, _), _)) in stmt.definitions.iter().enumerate() {
-            scope.insert(name.clone(), i as u32);
+            scope.insert(*name, i as u32);
         }
         self.scopes.push(scope);
         for (_, body) in &stmt.definitions {
@@ -46,7 +47,7 @@ impl Resolver {
                 }
                 Err(Diagnostic::new(
                     expr.1.clone(),
-                    format!("undefined variable: {}", var.name),
+                    format!("undefined variable: {}", display(var.name)),
                     "not found in scope",
                 ))
             }
@@ -57,9 +58,9 @@ impl Resolver {
                 Ok(())
             }
             Expr::Function(args, body) => {
-                let mut scope = HashMap::new();
+                let mut scope: HashMap<Symbol, u32> = HashMap::new();
                 for (i, (name, _)) in args.iter().enumerate() {
-                    scope.insert(name.clone(), i as u32);
+                    scope.insert(*name, i as u32);
                 }
                 self.scopes.push(scope);
                 self.expr(body)?;
@@ -67,9 +68,9 @@ impl Resolver {
                 Ok(())
             }
             Expr::Block(defs) => {
-                let mut scope = HashMap::new();
+                let mut scope: HashMap<Symbol, u32> = HashMap::new();
                 for (i, ((name, _), _)) in defs.iter().enumerate() {
-                    scope.insert(name.clone(), i as u32);
+                    scope.insert(*name, i as u32);
                 }
                 self.scopes.push(scope);
                 for (_, body) in defs {
