@@ -3,9 +3,9 @@ range: Iterator.range(0, 9000),
 fizzbuzz: (i) => {
   is_fizz: i % 3 = 0,
   is_buzz: i % 5 = 0,
-  fizz: if is_fizz "fizz" "",
-  buzz: if is_buzz "buzz" "",
-  
+  fizz: if is_fizz "fizz" else "",
+  buzz: if is_buzz "buzz" else "",
+
   String.concat(fizz, buzz)
 },
 

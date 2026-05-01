@@ -1,6 +1,7 @@
-mod lib;
+mod ast;
+mod lexer;
 mod parser;
-mod token;
+mod stdlib;
 mod translator;
 mod vm;
 
@@ -25,14 +26,12 @@ fn main() -> Result<()> {
         }
     };
 
-    println!("{}", eval(&input)?);
+    println!("{}", run(&input)?);
     Ok(())
 }
 
-fn eval(input: &str) -> Result<Value> {
-    let token = parser::parse(&input)
-        .map_err(|s| anyhow!("Parsing failed!, {}", s))?
-        .1;
-    let cmd = translator::get_cmd(&token);
+fn run(input: &str) -> Result<Value> {
+    let ast = parser::parse(input).map_err(|errs| anyhow!("Parsing failed:\n{}", errs.join("\n")))?;
+    let cmd = translator::get_cmd(&ast);
     vm::run(&cmd)
 }

@@ -1,242 +1,271 @@
-use crate::token::*;
-use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_until, take_while1},
-    character::complete::{char, digit1, multispace0},
-    combinator::{all_consuming, map, opt},
-    multi::{fold_many0, many0, separated_list},
-    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
-    IResult,
-};
-use std::str::FromStr;
+use chumsky::input::{Stream, ValueInput};
+use chumsky::prelude::*;
 
-fn number(input: &str) -> IResult<&str, Primary> {
-    let (input, n) = map(pair(opt(char('-')), digit1), |(neg, v)| {
-        let n: f64 = FromStr::from_str(v).unwrap();
-        if neg.is_some() {
-            return -n;
+use crate::ast::*;
+use crate::lexer::{lex, Token};
+
+pub fn parse(src: &str) -> Result<Statement, Vec<String>> {
+    let tokens = lex(src).map_err(|errs| {
+        errs.into_iter()
+            .map(|e| format!("Lex error: {}", e))
+            .collect::<Vec<_>>()
+    })?;
+
+    let eoi: SimpleSpan = (src.len()..src.len()).into();
+    let stream = Stream::from_iter(
+        tokens
+            .into_iter()
+            .map(|(t, s)| (t, SimpleSpan::from(s.start..s.end))),
+    )
+    .map(eoi, |(t, s)| (t, s));
+
+    parser().parse(stream).into_result().map_err(|errs| {
+        errs.into_iter()
+            .map(|e| format!("Parse error at {}..{}: {:?}", e.span().start, e.span().end, e))
+            .collect()
+    })
+}
+
+fn span_to_range(s: SimpleSpan) -> std::ops::Range<usize> {
+    s.start..s.end
+}
+
+fn parser<'src, I>(
+) -> impl Parser<'src, I, Statement, extra::Err<Rich<'src, Token, SimpleSpan>>> + Clone
+where
+    I: ValueInput<'src, Token = Token, Span = SimpleSpan>,
+{
+    let ident = select! { Token::Ident(s) => s }
+        .map_with(|s, ex| (s, span_to_range(ex.span())));
+
+    let expr = recursive(|expr| {
+        let bind = ident
+            .clone()
+            .then_ignore(just(Token::Colon))
+            .then(expr.clone())
+            .map(|(name, value)| (name, value));
+
+        let literal = select! {
+            Token::Num(n) => Expr::Number(n),
+            Token::Str(s) => Expr::String(s),
+            Token::Null => Expr::Null,
+        };
+
+        let var = select! { Token::Ident(s) => Expr::Variable(s) };
+
+        let list = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(Expr::List);
+
+        let func = ident
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .then_ignore(just(Token::FatArrow))
+            .then(expr.clone())
+            .map(|(args, body)| Expr::Function(args, Box::new(body)));
+
+        #[derive(Clone)]
+        enum BlockItem {
+            Bind(Bind),
+            Body(Spanned<Expr>),
         }
-        n
-    })(input)?;
-    Ok((input, Primary::Number(n)))
-}
 
-fn identifier(input: &str) -> IResult<&str, String> {
-    map(
-        take_while1(|chr: char| chr.is_alphabetic() || chr == '_'),
-        |s: &str| s.to_string(),
-    )(input)
-}
+        let block_item = choice((
+            ident
+                .clone()
+                .then_ignore(just(Token::Colon))
+                .rewind()
+                .ignore_then(bind.clone())
+                .map(BlockItem::Bind),
+            expr.clone().map(BlockItem::Body),
+        ));
 
-fn variable(input: &str) -> IResult<&str, Primary> {
-    map(identifier, Primary::Variable)(input)
-}
+        let brace = block_item
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBrace), just(Token::RBrace))
+            .map(|items: Vec<BlockItem>| {
+                let mut defs = Vec::new();
+                let mut body = None;
+                for item in items {
+                    match item {
+                        BlockItem::Bind(b) => defs.push(b),
+                        BlockItem::Body(e) => body = Some(e),
+                    }
+                }
+                match body {
+                    Some(body) => Expr::ImmediateBlock(Box::new(Statement {
+                        definitions: defs,
+                        body,
+                    })),
+                    None => Expr::Block(defs),
+                }
+            });
 
-fn immediate_block(input: &str) -> IResult<&str, Primary> {
-    let (input, s) = delimited(char('{'), statement, char('}'))(input)?;
-    Ok((input, Primary::ImmediateBlock(Box::new(s))))
-}
+        let if_expr = just(Token::If)
+            .ignore_then(expr.clone())
+            .then(expr.clone())
+            .then_ignore(just(Token::Else))
+            .then(expr.clone())
+            .map(|((cond, cons), alt)| Expr::If {
+                cond: Box::new(cond),
+                cons: Box::new(cons),
+                alt: Box::new(alt),
+            });
 
-fn arrow(input: &str) -> IResult<&str, &str> {
-    delimited(multispace0, tag("=>"), multispace0)(input)
-}
+        let paren = expr
+            .clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen));
 
-fn call(input: &str) -> IResult<&str, OperationRight> {
-    map(
-        delimited(char('('), separated_list(char(','), expression), char(')')),
-        OperationRight::Call,
-    )(input)
-}
+        let atom = choice((literal, if_expr, func, list, brace, var))
+            .map_with(|e, ex| (e, span_to_range(ex.span())))
+            .or(paren);
 
-fn index(input: &str) -> IResult<&str, OperationRight> {
-    map(
-        delimited(char('['), expression, char(']')),
-        OperationRight::Index,
-    )(input)
-}
+        #[derive(Clone)]
+        enum PostfixOp {
+            Access(Spanned<String>),
+            Call(Vec<Spanned<Expr>>),
+            Index(Spanned<Expr>),
+        }
 
-fn args(input: &str) -> IResult<&str, Vec<String>> {
-    delimited(
-        char('('),
-        separated_list(char(','), delimited(multispace0, identifier, multispace0)),
-        char(')'),
-    )(input)
-}
+        let dot_access = just(Token::Dot)
+            .ignore_then(ident.clone())
+            .map(PostfixOp::Access);
 
-fn function(input: &str) -> IResult<&str, Primary> {
-    let (input, s) = pair(args, preceded(arrow, expression))(input)?;
-    Ok((input, Primary::Function(s.0, Box::new(s.1))))
-}
+        let bracket_string_access = select! { Token::Str(s) => s }
+            .map_with(|s, ex| (s, span_to_range(ex.span())))
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(PostfixOp::Access);
 
-fn string(input: &str) -> IResult<&str, String> {
-    map(
-        delimited(char('"'), take_until("\""), char('"')),
-        String::from,
-    )(input)
-}
+        let bracket_index = expr
+            .clone()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(PostfixOp::Index);
 
-fn string_literal(input: &str) -> IResult<&str, Primary> {
-    map(string, Primary::String)(input)
-}
+        let call = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map(PostfixOp::Call);
 
-fn block(input: &str) -> IResult<&str, Primary> {
-    let (input, s) = delimited(char('{'), definitions, char('}'))(input)?;
-    Ok((input, Primary::Block(s)))
-}
+        let postfix_op = choice((dot_access, call, bracket_string_access, bracket_index));
 
-fn list(input: &str) -> IResult<&str, Primary> {
-    map(
-        delimited(char('['), separated_list(char(','), expression), char(']')),
-        Primary::List,
-    )(input)
-}
-
-fn null(input: &str) -> IResult<&str, Primary> {
-    map(tag("null"), |_| Primary::Null)(input)
-}
-
-fn primary(input: &str) -> IResult<&str, Primary> {
-    alt((
-        number,
-        string_literal,
-        immediate_block,
-        list,
-        function,
-        block,
-        null,
-        variable,
-    ))(input)
-}
-
-fn access(input: &str) -> IResult<&str, OperationRight> {
-    map(
-        alt((
-            preceded(char('.'), identifier),
-            delimited(char('['), string, char(']')),
-        )),
-        OperationRight::Access,
-    )(input)
-}
-
-fn operation(input: &str) -> IResult<&str, Operation> {
-    let (input, left) = preceded(multispace0, primary)(input)?;
-    let (input, rights) = terminated(many0(alt((access, call, index))), multispace0)(input)?;
-    Ok((input, Operation { left, rights }))
-}
-
-fn multitive(input: &str) -> IResult<&str, Multitive> {
-    let (input, left) = operation(input)?;
-    let (input, rights) = fold_many0(
-        pair(alt((char('*'), char('/'), char('%'))), operation),
-        Vec::new(),
-        |mut vec, (op, val)| {
-            match op {
-                '*' => vec.push(MultitiveRight::Mul(val)),
-                '/' => vec.push(MultitiveRight::Div(val)),
-                '%' => vec.push(MultitiveRight::Surplus(val)),
-                _ => unreachable!(),
+        let postfix = atom.foldl_with(postfix_op.repeated(), |lhs, op, ex| {
+            let span = span_to_range(ex.span());
+            let node = match op {
+                PostfixOp::Access(name) => Expr::Access(Box::new(lhs), name),
+                PostfixOp::Call(args) => Expr::Call(Box::new(lhs), args),
+                PostfixOp::Index(idx) => Expr::Index(Box::new(lhs), Box::new(idx)),
             };
-            vec
-        },
-    )(input)?;
-    Ok((input, Multitive { left, rights }))
-}
+            (node, span)
+        });
 
-fn additive(input: &str) -> IResult<&str, Additive> {
-    let (input, left) = multitive(input)?;
-    let (input, rights) = fold_many0(
-        pair(alt((char('+'), char('-'))), multitive),
-        Vec::new(),
-        |mut vec, (op, val)| {
-            match op {
-                '+' => vec.push(AdditiveRight::Add(val)),
-                '-' => vec.push(AdditiveRight::Sub(val)),
-                _ => unreachable!(),
-            };
-            vec
-        },
-    )(input)?;
-    Ok((input, Additive { left, rights }))
-}
+        let unary = choice((
+            just(Token::Minus).to(UnaryOp::Neg),
+            just(Token::Bang).to(UnaryOp::Not),
+        ))
+        .repeated()
+        .foldr_with(postfix, |op, rhs, ex| {
+            (Expr::Unary(op, Box::new(rhs)), span_to_range(ex.span()))
+        });
 
-fn comparison(input: &str) -> IResult<&str, Comparison> {
-    let (input, left) = additive(input)?;
-    let (input, rights) = fold_many0(
-        pair(
-            alt((
-                tag("="),
-                tag("!="),
-                tag(">"),
-                tag("<"),
-                tag(">="),
-                tag("<="),
-            )),
-            additive,
-        ),
-        Vec::new(),
-        |mut vec, (op, val)| {
-            match op {
-                "=" => vec.push(ComparisonRight::Equal(val)),
-                "!=" => vec.push(ComparisonRight::NotEqual(val)),
-                ">" => vec.push(ComparisonRight::GreaterThan(val)),
-                "<" => vec.push(ComparisonRight::LessThan(val)),
-                ">=" => vec.push(ComparisonRight::NotLessThan(val)),
-                "<=" => vec.push(ComparisonRight::NotGreaterThan(val)),
-                _ => unreachable!(),
-            };
-            vec
-        },
-    )(input)?;
-    Ok((input, Comparison { left, rights }))
-}
+        let mul_op = choice((
+            just(Token::Star).to(BinOp::Mul),
+            just(Token::Slash).to(BinOp::Div),
+            just(Token::Percent).to(BinOp::Mod),
+        ));
 
-fn bind(input: &str) -> IResult<&str, (String, Expression)> {
-    let (input, (label, v)) = separated_pair(identifier, char(':'), expression)(input)?;
-    Ok((input, (label, v)))
-}
+        let multitive = unary.clone().foldl_with(
+            mul_op.then(unary).repeated(),
+            |lhs, (op, rhs), ex| {
+                (
+                    Expr::Binary(op, Box::new(lhs), Box::new(rhs)),
+                    span_to_range(ex.span()),
+                )
+            },
+        );
 
-fn definitions(input: &str) -> IResult<&str, Vec<(String, Expression)>> {
-    separated_list(char(','), delimited(multispace0, bind, multispace0))(input)
-}
+        let add_op = choice((
+            just(Token::Plus).to(BinOp::Add),
+            just(Token::Minus).to(BinOp::Sub),
+        ));
 
-fn statement(input: &str) -> IResult<&str, Statement> {
-    alt((
-        map(
-            separated_pair(definitions, char(','), expression),
-            |(definitions, body)| Statement { definitions, body },
-        ),
-        map(expression, |body| Statement {
-            definitions: Vec::new(),
-            body,
-        }),
-    ))(input)
-}
+        let additive = multitive.clone().foldl_with(
+            add_op.then(multitive).repeated(),
+            |lhs, (op, rhs), ex| {
+                (
+                    Expr::Binary(op, Box::new(lhs), Box::new(rhs)),
+                    span_to_range(ex.span()),
+                )
+            },
+        );
 
-fn if_(input: &str) -> IResult<&str, Expression> {
-    let (input, (cond, cons, alt)) = delimited(
-        multispace0,
-        preceded(tag("if"), tuple((expression, expression, expression))),
-        multispace0,
-    )(input)?;
-    Ok((
-        input,
-        Expression::If {
-            cond: Box::new(cond),
-            cons: Box::new(cons),
-            alt: Box::new(alt),
-        },
-    ))
-}
+        let cmp_op = choice((
+            just(Token::NotEq).to(BinOp::Ne),
+            just(Token::GtEq).to(BinOp::Ge),
+            just(Token::LtEq).to(BinOp::Le),
+            just(Token::Eq).to(BinOp::Eq),
+            just(Token::Gt).to(BinOp::Gt),
+            just(Token::Lt).to(BinOp::Lt),
+        ));
 
-fn expression(input: &str) -> IResult<&str, Expression> {
-    alt((if_, map(comparison, Expression::Comparison)))(input)
-}
+        additive.clone().foldl_with(
+            cmp_op.then(additive).repeated(),
+            |lhs, (op, rhs), ex| {
+                (
+                    Expr::Binary(op, Box::new(lhs), Box::new(rhs)),
+                    span_to_range(ex.span()),
+                )
+            },
+        )
+    });
 
-pub fn parse(input: &str) -> IResult<&str, AST> {
-    all_consuming(statement)(input)
-}
+    let bind = ident
+        .clone()
+        .then_ignore(just(Token::Colon))
+        .then(expr.clone());
 
-#[test]
-fn test_definitions() {
-    dbg!(definitions("hoge: 1, fuga:2").unwrap());
+    #[derive(Clone)]
+    enum StmtItem {
+        Bind(Bind),
+        Body(Spanned<Expr>),
+    }
+
+    let stmt_item = choice((
+        ident
+            .clone()
+            .then_ignore(just(Token::Colon))
+            .rewind()
+            .ignore_then(bind)
+            .map(StmtItem::Bind),
+        expr.clone().map(StmtItem::Body),
+    ));
+
+    stmt_item
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>()
+        .then_ignore(end())
+        .try_map(|items: Vec<StmtItem>, span| {
+            let mut definitions = Vec::new();
+            let mut body = None;
+            for item in items {
+                match item {
+                    StmtItem::Bind(b) => definitions.push(b),
+                    StmtItem::Body(e) => {
+                        if body.is_some() {
+                            return Err(Rich::custom(span, "multiple body expressions"));
+                        }
+                        body = Some(e);
+                    }
+                }
+            }
+            body.map(|body| Statement { definitions, body })
+                .ok_or_else(|| Rich::custom(span, "statement must end with a body expression"))
+        })
 }
