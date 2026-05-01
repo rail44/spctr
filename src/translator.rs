@@ -1,9 +1,13 @@
 use crate::ast::*;
+use crate::diag::Diagnostic;
+use crate::lexer::Span;
 use crate::parser;
 use crate::stdlib;
 use crate::vm::{Cmd, ForeignFunction, Value};
 use std::collections::HashMap;
 use std::rc::Rc;
+
+pub type TranslateResult = Result<Vec<Cmd>, Diagnostic>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Env(Option<Rc<(HashMap<String, usize>, Env)>>);
@@ -21,20 +25,21 @@ impl Env {
     }
 
     fn get_bind(&self, name: &str) -> Option<(usize, usize)> {
-        let rc = self.0.as_ref().unwrap();
-        rc.0.get(name).map_or_else(
-            || rc.1.get_bind(name).map(|(addr, depth)| (addr, depth + 1)),
-            |addr| Some((*addr, 0)),
-        )
+        let rc = self.0.as_ref()?;
+        if let Some(addr) = rc.0.get(name) {
+            return Some((*addr, 0));
+        }
+        rc.1.get_bind(name).map(|(addr, depth)| (addr, depth + 1))
     }
 }
 
-pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
+pub fn get_cmd(ast: &AST) -> TranslateResult {
     let mut translator = Translator::new();
     let mut block = translator.block();
 
     block.add_bind("Iterator", |translator| {
-        let stmt = parser::parse(include_str!("stdlib/iterator.spc")).unwrap();
+        let stmt = parser::parse(include_str!("stdlib/iterator.spc"))
+            .expect("stdlib/iterator.spc failed to parse");
         translator.translate(&stmt)
     });
 
@@ -48,15 +53,15 @@ pub fn get_cmd(ast: &AST) -> Vec<Cmd> {
 pub struct BlockTranslator<'a> {
     translator: &'a mut Translator,
     bind_names: Vec<String>,
-    bind_bodies: Vec<Box<dyn FnOnce(&mut Translator) -> Vec<Cmd> + 'a>>,
-    body: Option<Box<dyn FnOnce(&mut Translator) -> Vec<Cmd> + 'a>>,
+    bind_bodies: Vec<Box<dyn FnOnce(&mut Translator) -> TranslateResult + 'a>>,
+    body: Option<Box<dyn FnOnce(&mut Translator) -> TranslateResult + 'a>>,
 }
 
 impl<'a> BlockTranslator<'a> {
     pub fn add_bind<S, F>(&mut self, name: S, f: F)
     where
         S: ToString,
-        F: FnOnce(&mut Translator) -> Vec<Cmd> + 'a,
+        F: FnOnce(&mut Translator) -> TranslateResult + 'a,
     {
         self.bind_names.push(name.to_string());
         self.bind_bodies.push(Box::new(f));
@@ -64,12 +69,12 @@ impl<'a> BlockTranslator<'a> {
 
     fn set_body<F>(&mut self, f: F)
     where
-        F: FnOnce(&mut Translator) -> Vec<Cmd> + 'a,
+        F: FnOnce(&mut Translator) -> TranslateResult + 'a,
     {
         self.body = Some(Box::new(f));
     }
 
-    pub fn finalize(self) -> Vec<Cmd> {
+    pub fn finalize(self) -> TranslateResult {
         let mut cmd = Vec::new();
         let mut b = Vec::new();
         let l = self.bind_names.len();
@@ -82,7 +87,7 @@ impl<'a> BlockTranslator<'a> {
         let mut translator = self.translator.fork(map);
         let mut bind_cmds = Vec::new();
         for (id, f) in b.into_iter().zip(self.bind_bodies) {
-            let mut body_cmd = f(&mut translator);
+            let mut body_cmd = f(&mut translator)?;
             body_cmd.push(Cmd::Store(id));
             body_cmd.push(Cmd::Return);
             bind_cmds.push(body_cmd);
@@ -92,7 +97,7 @@ impl<'a> BlockTranslator<'a> {
         cmd.append(&mut bind_cmds.into_iter().flatten().collect());
 
         let mut body = if let Some(body_cmd) = self.body {
-            (body_cmd)(&mut translator)
+            (body_cmd)(&mut translator)?
         } else {
             let mut cmd = Vec::new();
             let mut load_cmds = Vec::new();
@@ -110,7 +115,7 @@ impl<'a> BlockTranslator<'a> {
 
         cmd.append(&mut body);
         cmd.push(Cmd::ExitScope);
-        cmd
+        Ok(cmd)
     }
 }
 
@@ -142,7 +147,7 @@ impl Translator {
         self.env.get_bind(name)
     }
 
-    fn translate(&mut self, stmt: &Statement) -> Vec<Cmd> {
+    fn translate(&mut self, stmt: &Statement) -> TranslateResult {
         let mut block = self.block();
         for ((name, _name_span), body) in &stmt.definitions {
             block.add_bind(name.clone(), move |translator: &mut Translator| {
@@ -154,19 +159,19 @@ impl Translator {
         block.finalize()
     }
 
-    fn translate_expr(&mut self, expr: &Spanned<Expr>) -> Vec<Cmd> {
+    fn translate_expr(&mut self, expr: &Spanned<Expr>) -> TranslateResult {
         match &expr.0 {
-            Expr::Number(n) => vec![Cmd::NumberConst(*n)],
-            Expr::String(s) => vec![Cmd::StringConst(Rc::new(s.clone()))],
-            Expr::Null => vec![Cmd::NullConst],
-            Expr::Variable(name) => self.translate_identifier(name),
+            Expr::Number(n) => Ok(vec![Cmd::NumberConst(*n)]),
+            Expr::String(s) => Ok(vec![Cmd::StringConst(Rc::new(s.clone()))]),
+            Expr::Null => Ok(vec![Cmd::NullConst]),
+            Expr::Variable(name) => self.translate_identifier(name, &expr.1),
             Expr::List(items) => {
                 let mut cmd = Vec::new();
                 for item in items {
-                    cmd.append(&mut self.translate_expr(item));
+                    cmd.append(&mut self.translate_expr(item)?);
                 }
                 cmd.push(Cmd::ConstructList(items.len()));
-                cmd
+                Ok(cmd)
             }
             Expr::Function(arg_names, body) => {
                 let mut map = HashMap::new();
@@ -175,13 +180,13 @@ impl Translator {
                 }
                 let mut translator = self.fork(map);
 
-                let mut body_cmd = translator.translate_expr(body);
+                let mut body_cmd = translator.translate_expr(body)?;
                 body_cmd.push(Cmd::Return);
 
                 let mut cmd = Vec::new();
                 cmd.push(Cmd::ConstructFunction(body_cmd.len()));
                 cmd.append(&mut body_cmd);
-                cmd
+                Ok(cmd)
             }
             Expr::Block(definitions) => {
                 let mut block = self.block();
@@ -194,9 +199,9 @@ impl Translator {
             }
             Expr::ImmediateBlock(stmt) => self.translate(stmt),
             Expr::If { cond, cons, alt } => {
-                let mut cond_cmd = self.translate_expr(cond);
-                let mut alt_cmd = self.translate_expr(alt);
-                let mut cons_cmd = self.translate_expr(cons);
+                let mut cond_cmd = self.translate_expr(cond)?;
+                let mut alt_cmd = self.translate_expr(alt)?;
+                let mut cons_cmd = self.translate_expr(cons)?;
                 cons_cmd.push(Cmd::JumpRel(alt_cmd.len() + 1));
 
                 let mut cmd = Vec::new();
@@ -204,11 +209,11 @@ impl Translator {
                 cmd.push(Cmd::JumpRelUnless(cons_cmd.len() + 1));
                 cmd.append(&mut cons_cmd);
                 cmd.append(&mut alt_cmd);
-                cmd
+                Ok(cmd)
             }
             Expr::Binary(op, l, r) => {
-                let mut cmd = self.translate_expr(l);
-                cmd.append(&mut self.translate_expr(r));
+                let mut cmd = self.translate_expr(l)?;
+                cmd.append(&mut self.translate_expr(r)?);
                 match op {
                     BinOp::Add => cmd.push(Cmd::Add),
                     BinOp::Sub => cmd.push(Cmd::Sub),
@@ -231,48 +236,52 @@ impl Translator {
                         cmd.push(Cmd::Not);
                     }
                 }
-                cmd
+                Ok(cmd)
             }
             Expr::Unary(op, e) => {
                 let mut cmd = match op {
                     UnaryOp::Neg => vec![Cmd::NumberConst(0.0)],
                     UnaryOp::Not => Vec::new(),
                 };
-                cmd.append(&mut self.translate_expr(e));
+                cmd.append(&mut self.translate_expr(e)?);
                 match op {
                     UnaryOp::Neg => cmd.push(Cmd::Sub),
                     UnaryOp::Not => cmd.push(Cmd::Not),
                 }
-                cmd
+                Ok(cmd)
             }
             Expr::Call(callee, args) => {
-                let mut cmd = self.translate_expr(callee);
+                let mut cmd = self.translate_expr(callee)?;
                 for arg in args {
-                    cmd.append(&mut self.translate_expr(arg));
+                    cmd.append(&mut self.translate_expr(arg)?);
                 }
                 cmd.push(Cmd::Call(args.len()));
-                cmd
+                Ok(cmd)
             }
             Expr::Access(obj, (name, _)) => {
-                let mut cmd = self.translate_expr(obj);
+                let mut cmd = self.translate_expr(obj)?;
                 cmd.push(Cmd::StringConst(Rc::new(name.clone())));
                 cmd.push(Cmd::Access);
-                cmd
+                Ok(cmd)
             }
             Expr::Index(arr, idx) => {
-                let mut cmd = self.translate_expr(arr);
-                cmd.append(&mut self.translate_expr(idx));
+                let mut cmd = self.translate_expr(arr)?;
+                cmd.append(&mut self.translate_expr(idx)?);
                 cmd.push(Cmd::Index);
-                cmd
+                Ok(cmd)
             }
         }
     }
 
-    fn translate_identifier(&self, name: &str) -> Vec<Cmd> {
-        let (id, depth) = self
-            .get_bind(name)
-            .unwrap_or_else(|| panic!("could not find bind by \"{}\"", name));
-        vec![Cmd::Load(id, depth)]
+    fn translate_identifier(&self, name: &str, span: &Span) -> TranslateResult {
+        let (id, depth) = self.get_bind(name).ok_or_else(|| {
+            Diagnostic::new(
+                span.clone(),
+                format!("undefined variable: {}", name),
+                "not found in scope",
+            )
+        })?;
+        Ok(vec![Cmd::Load(id, depth)])
     }
 
     pub fn translate_foreign<F>(&self, f: F) -> Vec<Cmd>

@@ -1,37 +1,58 @@
 mod ast;
+mod diag;
 mod lexer;
 mod parser;
 mod stdlib;
 mod translator;
 mod vm;
 
-use crate::vm::Value;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::{App, Arg};
 
 use std::fs;
+use std::process::ExitCode;
 
-fn main() -> Result<()> {
+fn main() -> Result<ExitCode> {
     let matches = App::new("spctr")
         .arg(Arg::with_name("FILE").index(1))
         .arg(Arg::with_name("input").short("c").takes_value(true))
         .arg(Arg::with_name("use_stdin").short("i").takes_value(false))
         .get_matches();
 
-    let input = match matches.value_of("input") {
-        Some(v) => v.to_string(),
+    let (filename, source) = match matches.value_of("input") {
+        Some(v) => ("<inline>".to_string(), v.to_string()),
         None => {
             let path = matches.value_of("FILE").unwrap();
-            fs::read_to_string(path)?
+            (path.to_string(), fs::read_to_string(path)?)
         }
     };
 
-    println!("{}", run(&input)?);
-    Ok(())
-}
+    let ast = match parser::parse(&source) {
+        Ok(ast) => ast,
+        Err(diags) => {
+            for d in &diags {
+                diag::report(&filename, &source, d);
+            }
+            return Ok(ExitCode::FAILURE);
+        }
+    };
 
-fn run(input: &str) -> Result<Value> {
-    let ast = parser::parse(input).map_err(|errs| anyhow!("Parsing failed:\n{}", errs.join("\n")))?;
-    let cmd = translator::get_cmd(&ast);
-    vm::run(&cmd)
+    let cmd = match translator::get_cmd(&ast) {
+        Ok(cmd) => cmd,
+        Err(d) => {
+            diag::report(&filename, &source, &d);
+            return Ok(ExitCode::FAILURE);
+        }
+    };
+
+    match vm::run(&cmd) {
+        Ok(v) => {
+            println!("{}", v);
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(e) => {
+            eprintln!("runtime error: {}", e);
+            Ok(ExitCode::FAILURE)
+        }
+    }
 }

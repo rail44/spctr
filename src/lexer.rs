@@ -74,6 +74,41 @@ pub enum Token {
     Ident(String),
 }
 
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::If => write!(f, "if"),
+            Token::Else => write!(f, "else"),
+            Token::Null => write!(f, "null"),
+            Token::FatArrow => write!(f, "=>"),
+            Token::LParen => write!(f, "("),
+            Token::RParen => write!(f, ")"),
+            Token::LBrace => write!(f, "{{"),
+            Token::RBrace => write!(f, "}}"),
+            Token::LBracket => write!(f, "["),
+            Token::RBracket => write!(f, "]"),
+            Token::Comma => write!(f, ","),
+            Token::Colon => write!(f, ":"),
+            Token::Dot => write!(f, "."),
+            Token::Plus => write!(f, "+"),
+            Token::Minus => write!(f, "-"),
+            Token::Star => write!(f, "*"),
+            Token::Slash => write!(f, "/"),
+            Token::Percent => write!(f, "%"),
+            Token::NotEq => write!(f, "!="),
+            Token::GtEq => write!(f, ">="),
+            Token::LtEq => write!(f, "<="),
+            Token::Eq => write!(f, "="),
+            Token::Gt => write!(f, ">"),
+            Token::Lt => write!(f, "<"),
+            Token::Bang => write!(f, "!"),
+            Token::Num(n) => write!(f, "{}", n),
+            Token::Str(s) => write!(f, "\"{}\"", s),
+            Token::Ident(s) => write!(f, "{}", s),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct LexError {
     pub span: Span,

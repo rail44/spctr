@@ -2,12 +2,13 @@ use chumsky::input::{Stream, ValueInput};
 use chumsky::prelude::*;
 
 use crate::ast::*;
+use crate::diag::Diagnostic;
 use crate::lexer::{lex, Token};
 
-pub fn parse(src: &str) -> Result<Statement, Vec<String>> {
+pub fn parse(src: &str) -> Result<Statement, Vec<Diagnostic>> {
     let tokens = lex(src).map_err(|errs| {
         errs.into_iter()
-            .map(|e| format!("Lex error: {}", e))
+            .map(|e| Diagnostic::new(e.span, "lex error", "unexpected character"))
             .collect::<Vec<_>>()
     })?;
 
@@ -21,7 +22,10 @@ pub fn parse(src: &str) -> Result<Statement, Vec<String>> {
 
     parser().parse(stream).into_result().map_err(|errs| {
         errs.into_iter()
-            .map(|e| format!("Parse error at {}..{}: {:?}", e.span().start, e.span().end, e))
+            .map(|e| {
+                let span = span_to_range(*e.span());
+                Diagnostic::new(span, "parse error", e.to_string())
+            })
             .collect()
     })
 }
