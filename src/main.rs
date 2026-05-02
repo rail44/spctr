@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{App, Arg};
+use clap::Parser;
 use spctr::{diag, interp, jit, parser, resolver, stdlib::imports, typeck};
 
 use std::fs;
@@ -8,30 +8,45 @@ use std::thread;
 
 const INTERP_STACK_SIZE: usize = 64 * 1024 * 1024;
 
-fn main() -> Result<ExitCode> {
-    let matches = App::new("spctr")
-        .arg(Arg::with_name("FILE").index(1))
-        .arg(Arg::with_name("input").short("c").takes_value(true))
-        .arg(Arg::with_name("repl").long("repl").takes_value(false))
-        .arg(Arg::with_name("type").long("type").takes_value(false))
-        .arg(Arg::with_name("check").long("check").takes_value(false))
-        .arg(Arg::with_name("jit").long("jit").takes_value(false))
-        .get_matches();
-    let show_type = matches.is_present("type");
-    let only_check = matches.is_present("check");
-    let use_jit = matches.is_present("jit");
+#[derive(Parser)]
+#[command(name = "spctr")]
+struct Cli {
+    /// Source file to evaluate.
+    file: Option<String>,
+    /// Inline source.
+    #[arg(short = 'c', long = "input")]
+    input: Option<String>,
+    /// Start the REPL.
+    #[arg(long)]
+    repl: bool,
+    /// Print the inferred program type then evaluate.
+    #[arg(long = "type")]
+    show_type: bool,
+    /// Type-check only — skip evaluation.
+    #[arg(long)]
+    check: bool,
+    /// Run via the Cranelift JIT.
+    #[arg(long)]
+    jit: bool,
+}
 
-    let mode = if matches.is_present("repl") {
+fn main() -> Result<ExitCode> {
+    let cli = Cli::parse();
+    let show_type = cli.show_type;
+    let only_check = cli.check;
+    let use_jit = cli.jit;
+
+    let mode = if cli.repl {
         Mode::Repl
-    } else if let Some(s) = matches.value_of("input") {
+    } else if let Some(s) = cli.input {
         Mode::Source {
             filename: "<inline>".to_string(),
-            source: s.to_string(),
+            source: s,
         }
-    } else if let Some(path) = matches.value_of("FILE") {
+    } else if let Some(path) = cli.file {
         Mode::Source {
-            filename: path.to_string(),
-            source: fs::read_to_string(path)?,
+            source: fs::read_to_string(&path)?,
+            filename: path,
         }
     } else {
         Mode::Repl

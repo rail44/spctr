@@ -5,13 +5,13 @@ authors = ["Satoshi Amemiya <satoshi_amemiya@voyagegroup.com>"]
 edition = "2021"
 
 [dependencies]
-clap = "2.33"
+clap = { version = "4", features = ["derive"] }
 chumsky = "0.10"
-logos = "0.15"
+logos = "0.16"
 anyhow = "1"
-ariadne = "0.5"
+ariadne = "0.6"
 lasso = { version = "0.7", features = ["multi-threaded"] }
-rustyline = "17"
+rustyline = "18"
 cranelift-codegen = "0.131"
 cranelift-frontend = "0.131"
 cranelift-jit = "0.131"
@@ -19,7 +19,7 @@ cranelift-module = "0.131"
 cranelift-native = "0.131"
 
 [dev-dependencies]
-criterion = "0.7"
+criterion = "0.8"
 insta = "1"
 
 [[bench]]

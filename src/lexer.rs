@@ -5,7 +5,8 @@ pub type Span = Range<usize>;
 
 #[derive(Logos, Clone, Debug, PartialEq)]
 #[logos(skip r"[ \t\r\n]+")]
-#[logos(skip r"//[^\n]*")]
+// `[^\n]*` is intentionally greedy: a `//` comment runs to end-of-line.
+#[logos(skip(r"//[^\n]*", allow_greedy = true))]
 #[logos(skip r"/\*([^*]|\*[^/])*\*/")]
 pub enum Token {
     #[token("if")]
