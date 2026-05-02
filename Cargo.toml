@@ -2,12 +2,11 @@
 name = "spctr"
 version = "0.1.0"
 authors = ["Satoshi Amemiya <satoshi_amemiya@voyagegroup.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-clap = "2.33.3"
-nom = "5.1.2"
-anyhow = "1.0.32"
-
-# [profile.release]
-# debug = true
+clap = "2.33"
+chumsky = "0.10"
+logos = "0.15"
+anyhow = "1"
+ariadne = "0.5"

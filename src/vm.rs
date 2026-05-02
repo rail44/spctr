@@ -228,7 +228,7 @@ struct VM<'a> {
 }
 
 impl<'a> VM<'a> {
-    fn new(program: &'a [Cmd]) -> VM {
+    fn new(program: &'a [Cmd]) -> VM<'a> {
         let scope: Scope = Scope(None);
         VM {
             scope,
