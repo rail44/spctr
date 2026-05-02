@@ -13,7 +13,7 @@ fn bench_fib(c: &mut Criterion) {
     let mut group = c.benchmark_group("fib");
     for n in [10u32, 20, 25] {
         let src = format!(
-            "fib: (n) => if n < 2 n else fib(n-1) + fib(n-2), fib({})",
+            "fib: (n) => if n < 2 then n else fib(n-1) + fib(n-2), fib({})",
             n
         );
         group.bench_function(format!("fib({})", n), |b| {
@@ -30,10 +30,10 @@ fn bench_fizzbuzz(c: &mut Criterion) {
             r#"
 range: Iterator.range(0, {}),
 fizzbuzz: (i) => {{
-  is_fizz: i % 3 = 0,
-  is_buzz: i % 5 = 0,
-  fizz: if is_fizz "fizz" else "",
-  buzz: if is_buzz "buzz" else "",
+  is_fizz: i % 3 == 0,
+  is_buzz: i % 5 == 0,
+  fizz: if is_fizz then "fizz" else "",
+  buzz: if is_buzz then "buzz" else "",
   String.concat(fizz, buzz)
 }},
 range.map((i) => [i, fizzbuzz(i)]).to_list

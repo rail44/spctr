@@ -160,6 +160,7 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
         Expr::Number(n) => Ok(Value::Number(*n)),
         Expr::String(s) => Ok(Value::String(s.clone())),
         Expr::Null => Ok(Value::Null),
+        Expr::Bool(b) => Ok(Value::Bool(*b)),
         Expr::Variable(var) => {
             let bref = var.resolved.get().ok_or_else(|| {
                 Diagnostic::new(
@@ -209,8 +210,24 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
         }
         Expr::Binary(op, l, r) => {
             let lv = interpret(l, env)?;
-            let rv = interpret(r, env)?;
-            apply_binop(*op, lv, rv, span)
+            match op {
+                BinOp::And => {
+                    if !is_truthy(&lv) {
+                        return Ok(lv);
+                    }
+                    interpret(r, env)
+                }
+                BinOp::Or => {
+                    if is_truthy(&lv) {
+                        return Ok(lv);
+                    }
+                    interpret(r, env)
+                }
+                _ => {
+                    let rv = interpret(r, env)?;
+                    apply_binop(*op, lv, rv, span)
+                }
+            }
         }
         Expr::Unary(op, e) => {
             let v = interpret(e, env)?;
@@ -339,6 +356,7 @@ fn apply_binop(op: BinOp, l: Value, r: Value, span: &Span) -> EvalResult {
         BinOp::Lt => num_cmp(l, r, span, |a, b| a < b),
         BinOp::Ge => num_cmp(l, r, span, |a, b| a >= b),
         BinOp::Le => num_cmp(l, r, span, |a, b| a <= b),
+        BinOp::And | BinOp::Or => unreachable!("handled in interpret() for short-circuit"),
     }
 }
 

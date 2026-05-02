@@ -34,7 +34,7 @@ impl Resolver {
 
     fn expr(&mut self, expr: &Spanned<Expr>) -> Result<(), Diagnostic> {
         match &expr.0 {
-            Expr::Number(_) | Expr::String(_) | Expr::Null => Ok(()),
+            Expr::Number(_) | Expr::String(_) | Expr::Null | Expr::Bool(_) => Ok(()),
             Expr::Variable(var) => {
                 for (depth, scope) in self.scopes.iter().rev().enumerate() {
                     if let Some(slot) = scope.get(&var.name) {

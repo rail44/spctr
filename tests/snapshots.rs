@@ -34,16 +34,33 @@ fn arithmetic() {
 
 #[test]
 fn comparison() {
-    assert_snapshot!(run("1 = 1"), @"true");
+    assert_snapshot!(run("1 == 1"), @"true");
     assert_snapshot!(run("1 != 2"), @"true");
     assert_snapshot!(run("3 > 2"), @"true");
     assert_snapshot!(run("3 <= 3"), @"true");
 }
 
 #[test]
-fn if_else() {
-    assert_snapshot!(run("if 1 < 2 \"yes\" else \"no\""), @r###""yes""###);
-    assert_snapshot!(run("if 1 > 2 \"yes\" else \"no\""), @r###""no""###);
+fn bool_literals() {
+    assert_snapshot!(run("true"), @"true");
+    assert_snapshot!(run("false"), @"false");
+    assert_snapshot!(run("!true"), @"false");
+    assert_snapshot!(run("true && false"), @"false");
+    assert_snapshot!(run("true || false"), @"true");
+}
+
+#[test]
+fn short_circuit() {
+    // && returns falsy lhs without evaluating rhs
+    assert_snapshot!(run("false && undefined_var"), @"false");
+    // || returns truthy lhs without evaluating rhs
+    assert_snapshot!(run("true || undefined_var"), @"true");
+}
+
+#[test]
+fn if_then_else() {
+    assert_snapshot!(run("if 1 < 2 then \"yes\" else \"no\""), @r###""yes""###);
+    assert_snapshot!(run("if 1 > 2 then \"yes\" else \"no\""), @r###""no""###);
 }
 
 #[test]
@@ -51,6 +68,36 @@ fn binds_and_blocks() {
     assert_snapshot!(run("x: 5, x + 10"), @"15");
     assert_snapshot!(run("x: {a: 1, b: 2}, x.a + x.b"), @"3");
     assert_snapshot!(run("x: {a: 1}, x[\"a\"]"), @"1");
+}
+
+#[test]
+fn quoted_keys() {
+    assert_snapshot!(run(r#"{"a": 1, "b": 2}.a"#), @"1");
+    assert_snapshot!(run(r#"x: {"first": 10, "second": 20}, x["first"] + x["second"]"#), @"30");
+}
+
+#[test]
+fn json_literal() {
+    // a pure JSON object should evaluate to itself (formatted)
+    assert_snapshot!(
+        run(r#"{"name": "Alice", "age": 30, "active": true}"#),
+        @"{active, age, name}"
+    );
+}
+
+#[test]
+fn string_escapes() {
+    assert_snapshot!(run(r#""hello\nworld""#), @r###""hello
+world""###);
+    assert_snapshot!(run(r#""quote: \"hi\"""#), @r###""quote: \"hi\"""###);
+    assert_snapshot!(run(r#""é""#), @r###""é""###);
+}
+
+#[test]
+fn comments() {
+    assert_snapshot!(run("// comment\n1 + 2"), @"3");
+    assert_snapshot!(run("/* block */ 1 + 2"), @"3");
+    assert_snapshot!(run("x: 1, /* mid */ y: 2, /*tail*/ x + y"), @"3");
 }
 
 #[test]
@@ -70,7 +117,7 @@ fn closure() {
 #[test]
 fn fib() {
     assert_snapshot!(
-        run("fib: (n) => if n < 2 n else fib(n-1) + fib(n-2), fib(10)"),
+        run("fib: (n) => if n < 2 then n else fib(n-1) + fib(n-2), fib(10)"),
         @"55"
     );
 }
@@ -94,7 +141,7 @@ fn iterator_map() {
 #[test]
 fn iterator_filter() {
     assert_snapshot!(
-        run("Iterator.range(0, 10).filter((i) => i % 2 = 0).to_list"),
+        run("Iterator.range(0, 10).filter((i) => i % 2 == 0).to_list"),
         @"[0, 2, 4, 6, 8]"
     );
 }
