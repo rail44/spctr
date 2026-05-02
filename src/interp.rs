@@ -67,6 +67,15 @@ impl Env {
 
 pub const ROOT_NAMES: [&str; 3] = ["Iterator", "List", "String"];
 
+pub fn root_types() -> Vec<crate::types::Type> {
+    use crate::types::Type;
+    vec![
+        Type::Any, // Iterator: typed as Any until we add row polymorphism
+        crate::stdlib::list::ty(),
+        crate::stdlib::string::ty(),
+    ]
+}
+
 pub fn run(ast: &Statement) -> EvalResult {
     let env = build_root_env();
     interpret_statement(ast, &env)

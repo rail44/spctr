@@ -156,6 +156,19 @@ impl Inferer {
                 }
                 Ok(())
             }
+            (Type::Module(f1), Type::Module(f2)) => {
+                if f1.len() != f2.len() {
+                    return Err(format!("module fields: {} vs {}", f1.len(), f2.len()));
+                }
+                let m1: HashMap<_, _> = f1.iter().map(|(n, s)| (*n, s.ty.clone())).collect();
+                for (k2, sch2) in f2 {
+                    match m1.get(k2) {
+                        Some(t1) => self.unify_inner(t1, &sch2.ty)?,
+                        None => return Err(format!("missing field '{}'", display(*k2))),
+                    }
+                }
+                Ok(())
+            }
             (a, b) => Err(format!("incompatible: {} vs {}", a, b)),
         }
     }
@@ -306,6 +319,21 @@ impl Inferer {
                                 name_span.clone(),
                                 format!("no field '{}' on {}", display(*name), obj_t),
                                 "field not found in record",
+                            ));
+                            Type::Any
+                        }),
+                    Type::Module(fields) => fields
+                        .iter()
+                        .find(|(n, _)| n == name)
+                        .map(|(_, sch)| {
+                            let sch = sch.clone();
+                            self.instantiate(&sch)
+                        })
+                        .unwrap_or_else(|| {
+                            self.warnings.push(Diagnostic::new(
+                                name_span.clone(),
+                                format!("no field '{}' on {}", display(*name), obj_t),
+                                "field not found in module",
                             ));
                             Type::Any
                         }),

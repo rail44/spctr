@@ -16,6 +16,10 @@ pub enum Type {
     Fn(Vec<Type>, Box<Type>),
     List(Box<Type>),
     Record(Vec<(Symbol, Type)>),
+    /// Module-like value with potentially polymorphic field schemes.
+    /// Used for builtin modules (List, String, Iterator…); each field can
+    /// be instantiated independently when accessed.
+    Module(Vec<(Symbol, Scheme)>),
 }
 
 pub type Subst = HashMap<TypeVar, Type>;
@@ -35,6 +39,25 @@ impl Type {
             Type::Record(fields) => {
                 Type::Record(fields.iter().map(|(n, t)| (*n, t.apply(s))).collect())
             }
+            Type::Module(fields) => Type::Module(
+                fields
+                    .iter()
+                    .map(|(n, sch)| {
+                        // Don't substitute quantified vars
+                        let mut s_filtered = s.clone();
+                        for v in &sch.vars {
+                            s_filtered.remove(v);
+                        }
+                        (
+                            *n,
+                            Scheme {
+                                vars: sch.vars.clone(),
+                                ty: sch.ty.apply(&s_filtered),
+                            },
+                        )
+                    })
+                    .collect(),
+            ),
             _ => self.clone(),
         }
     }
@@ -45,6 +68,9 @@ impl Type {
             Type::Fn(args, ret) => ret.contains(var) || args.iter().any(|a| a.contains(var)),
             Type::List(t) => t.contains(var),
             Type::Record(fields) => fields.iter().any(|(_, t)| t.contains(var)),
+            Type::Module(fields) => fields.iter().any(|(_, sch)| {
+                !sch.vars.contains(&var) && sch.ty.contains(var)
+            }),
             _ => false,
         }
     }
@@ -64,6 +90,11 @@ impl Type {
             Type::Record(fields) => {
                 for (_, t) in fields {
                     t.free_vars(set);
+                }
+            }
+            Type::Module(fields) => {
+                for (_, sch) in fields {
+                    sch.free_vars(set);
                 }
             }
             _ => {}
@@ -115,6 +146,21 @@ impl fmt::Display for Type {
                     .map(|(n, t)| format!("{}: {}", display(*n), t))
                     .collect();
                 write!(f, "{{{}}}", parts.join(", "))
+            }
+            Type::Module(fields) => {
+                let parts: Vec<String> = fields
+                    .iter()
+                    .map(|(n, sch)| {
+                        if sch.vars.is_empty() {
+                            format!("{}: {}", display(*n), sch.ty)
+                        } else {
+                            let qs: Vec<String> =
+                                sch.vars.iter().map(|v| format!("?{}", v.0)).collect();
+                            format!("{}: forall {}. {}", display(*n), qs.join(","), sch.ty)
+                        }
+                    })
+                    .collect();
+                write!(f, "module{{{}}}", parts.join(", "))
             }
         }
     }
