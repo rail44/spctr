@@ -5,7 +5,7 @@ authors = ["Satoshi Amemiya <satoshi_amemiya@voyagegroup.com>"]
 edition = "2021"
 
 [dependencies]
-clap = "2.33"
+clap = "4.0"
 chumsky = "0.10"
 logos = "0.15"
 anyhow = "1"
