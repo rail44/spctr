@@ -4,6 +4,7 @@ use chumsky::prelude::*;
 use crate::ast::*;
 use crate::diag::Diagnostic;
 use crate::lexer::{lex, Token};
+use crate::symbol::{intern, Symbol};
 
 pub fn parse(src: &str) -> Result<Statement, Vec<Diagnostic>> {
     let tokens = lex(src).map_err(|errs| {
@@ -39,11 +40,17 @@ fn parser<'src, I>(
 where
     I: ValueInput<'src, Token = Token, Span = SimpleSpan>,
 {
-    let ident = select! { Token::Ident(s) => s }
-        .map_with(|s, ex| (s, span_to_range(ex.span())));
+    let ident = select! { Token::Ident(s) => intern(&s) }
+        .map_with(|sym, ex| (sym, span_to_range(ex.span())));
+
+    let key = select! {
+        Token::Ident(s) => intern(&s),
+        Token::Str(s) => intern(&s),
+    }
+    .map_with(|sym, ex| (sym, span_to_range(ex.span())));
 
     let expr = recursive(|expr| {
-        let bind = ident
+        let bind = key
             .clone()
             .then_ignore(just(Token::Colon))
             .then(expr.clone())
@@ -51,11 +58,13 @@ where
 
         let literal = select! {
             Token::Num(n) => Expr::Number(n),
-            Token::Str(s) => Expr::String(s),
+            Token::Str(s) => Expr::String(std::rc::Rc::new(s)),
             Token::Null => Expr::Null,
+            Token::True => Expr::Bool(true),
+            Token::False => Expr::Bool(false),
         };
 
-        let var = select! { Token::Ident(s) => Expr::Variable(s) };
+        let var = select! { Token::Ident(s) => Expr::Variable(VarRef::new(intern(&s))) };
 
         let list = expr
             .clone()
@@ -80,8 +89,7 @@ where
         }
 
         let block_item = choice((
-            ident
-                .clone()
+            key.clone()
                 .then_ignore(just(Token::Colon))
                 .rewind()
                 .ignore_then(bind.clone())
@@ -113,6 +121,7 @@ where
 
         let if_expr = just(Token::If)
             .ignore_then(expr.clone())
+            .then_ignore(just(Token::Then))
             .then(expr.clone())
             .then_ignore(just(Token::Else))
             .then(expr.clone())
@@ -132,7 +141,7 @@ where
 
         #[derive(Clone)]
         enum PostfixOp {
-            Access(Spanned<String>),
+            Access(Spanned<Symbol>),
             Call(Vec<Spanned<Expr>>),
             Index(Spanned<Expr>),
         }
@@ -141,8 +150,8 @@ where
             .ignore_then(ident.clone())
             .map(PostfixOp::Access);
 
-        let bracket_string_access = select! { Token::Str(s) => s }
-            .map_with(|s, ex| (s, span_to_range(ex.span())))
+        let bracket_string_access = select! { Token::Str(s) => intern(&s) }
+            .map_with(|sym, ex| (sym, span_to_range(ex.span())))
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .map(PostfixOp::Access);
 
@@ -160,15 +169,17 @@ where
 
         let postfix_op = choice((dot_access, call, bracket_string_access, bracket_index));
 
-        let postfix = atom.foldl_with(postfix_op.repeated(), |lhs, op, ex| {
-            let span = span_to_range(ex.span());
-            let node = match op {
-                PostfixOp::Access(name) => Expr::Access(Box::new(lhs), name),
-                PostfixOp::Call(args) => Expr::Call(Box::new(lhs), args),
-                PostfixOp::Index(idx) => Expr::Index(Box::new(lhs), Box::new(idx)),
-            };
-            (node, span)
-        });
+        let postfix = atom
+            .foldl_with(postfix_op.repeated(), |lhs, op, ex| {
+                let span = span_to_range(ex.span());
+                let node = match op {
+                    PostfixOp::Access(name) => Expr::Access(Box::new(lhs), name),
+                    PostfixOp::Call(args) => Expr::Call(Box::new(lhs), args),
+                    PostfixOp::Index(idx) => Expr::Index(Box::new(lhs), Box::new(idx)),
+                };
+                (node, span)
+            })
+            .boxed();
 
         let unary = choice((
             just(Token::Minus).to(UnaryOp::Neg),
@@ -177,7 +188,8 @@ where
         .repeated()
         .foldr_with(postfix, |op, rhs, ex| {
             (Expr::Unary(op, Box::new(rhs)), span_to_range(ex.span()))
-        });
+        })
+        .boxed();
 
         let mul_op = choice((
             just(Token::Star).to(BinOp::Mul),
@@ -185,52 +197,78 @@ where
             just(Token::Percent).to(BinOp::Mod),
         ));
 
-        let multitive = unary.clone().foldl_with(
-            mul_op.then(unary).repeated(),
-            |lhs, (op, rhs), ex| {
+        let multitive = unary
+            .clone()
+            .foldl_with(mul_op.then(unary).repeated(), |lhs, (op, rhs), ex| {
                 (
                     Expr::Binary(op, Box::new(lhs), Box::new(rhs)),
                     span_to_range(ex.span()),
                 )
-            },
-        );
+            })
+            .boxed();
 
         let add_op = choice((
             just(Token::Plus).to(BinOp::Add),
             just(Token::Minus).to(BinOp::Sub),
         ));
 
-        let additive = multitive.clone().foldl_with(
-            add_op.then(multitive).repeated(),
-            |lhs, (op, rhs), ex| {
+        let additive = multitive
+            .clone()
+            .foldl_with(add_op.then(multitive).repeated(), |lhs, (op, rhs), ex| {
                 (
                     Expr::Binary(op, Box::new(lhs), Box::new(rhs)),
                     span_to_range(ex.span()),
                 )
-            },
-        );
+            })
+            .boxed();
 
         let cmp_op = choice((
             just(Token::NotEq).to(BinOp::Ne),
             just(Token::GtEq).to(BinOp::Ge),
             just(Token::LtEq).to(BinOp::Le),
-            just(Token::Eq).to(BinOp::Eq),
+            just(Token::EqEq).to(BinOp::Eq),
             just(Token::Gt).to(BinOp::Gt),
             just(Token::Lt).to(BinOp::Lt),
         ));
 
-        additive.clone().foldl_with(
-            cmp_op.then(additive).repeated(),
-            |lhs, (op, rhs), ex| {
+        let comparison = additive
+            .clone()
+            .foldl_with(cmp_op.then(additive).repeated(), |lhs, (op, rhs), ex| {
                 (
                     Expr::Binary(op, Box::new(lhs), Box::new(rhs)),
                     span_to_range(ex.span()),
                 )
-            },
-        )
+            })
+            .boxed();
+
+        let logic_and = comparison
+            .clone()
+            .foldl_with(
+                just(Token::AndAnd).to(BinOp::And).then(comparison).repeated(),
+                |lhs, (op, rhs), ex| {
+                    (
+                        Expr::Binary(op, Box::new(lhs), Box::new(rhs)),
+                        span_to_range(ex.span()),
+                    )
+                },
+            )
+            .boxed();
+
+        logic_and
+            .clone()
+            .foldl_with(
+                just(Token::OrOr).to(BinOp::Or).then(logic_and).repeated(),
+                |lhs, (op, rhs), ex| {
+                    (
+                        Expr::Binary(op, Box::new(lhs), Box::new(rhs)),
+                        span_to_range(ex.span()),
+                    )
+                },
+            )
+            .boxed()
     });
 
-    let bind = ident
+    let bind = key
         .clone()
         .then_ignore(just(Token::Colon))
         .then(expr.clone());
@@ -242,8 +280,7 @@ where
     }
 
     let stmt_item = choice((
-        ident
-            .clone()
+        key.clone()
             .then_ignore(just(Token::Colon))
             .rewind()
             .ignore_then(bind)
@@ -269,7 +306,7 @@ where
                     }
                 }
             }
-            body.map(|body| Statement { definitions, body })
-                .ok_or_else(|| Rich::custom(span, "statement must end with a body expression"))
+            let body = body.unwrap_or_else(|| (Expr::Null, span_to_range(span)));
+            Ok(Statement { definitions, body })
         })
 }

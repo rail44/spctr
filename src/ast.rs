@@ -1,4 +1,7 @@
 use crate::lexer::Span;
+use crate::symbol::Symbol;
+use std::cell::Cell;
+use std::rc::Rc;
 
 pub type Spanned<T> = (T, Span);
 
@@ -8,7 +11,28 @@ pub struct Statement {
     pub body: Spanned<Expr>,
 }
 
-pub type Bind = (Spanned<String>, Spanned<Expr>);
+pub type Bind = (Spanned<Symbol>, Spanned<Expr>);
+
+#[derive(Clone, Copy, Debug)]
+pub struct BindRef {
+    pub depth: u32,
+    pub slot: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct VarRef {
+    pub name: Symbol,
+    pub resolved: Cell<Option<BindRef>>,
+}
+
+impl VarRef {
+    pub fn new(name: Symbol) -> Self {
+        Self {
+            name,
+            resolved: Cell::new(None),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum BinOp {
@@ -23,6 +47,8 @@ pub enum BinOp {
     Lt,
     Ge,
     Le,
+    And,
+    Or,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -34,11 +60,12 @@ pub enum UnaryOp {
 #[derive(Clone, Debug)]
 pub enum Expr {
     Number(f64),
-    String(String),
-    Variable(String),
+    String(Rc<String>),
+    Variable(VarRef),
     Null,
+    Bool(bool),
     List(Vec<Spanned<Expr>>),
-    Function(Vec<Spanned<String>>, Box<Spanned<Expr>>),
+    Function(Vec<Spanned<Symbol>>, Box<Spanned<Expr>>),
     Block(Vec<Bind>),
     ImmediateBlock(Box<Statement>),
     If {
@@ -49,7 +76,8 @@ pub enum Expr {
     Binary(BinOp, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     Unary(UnaryOp, Box<Spanned<Expr>>),
     Call(Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
-    Access(Box<Spanned<Expr>>, Spanned<String>),
+    Access(Box<Spanned<Expr>>, Spanned<Symbol>),
     Index(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 }
 
+pub type AST = Statement;

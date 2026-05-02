@@ -5,13 +5,21 @@ pub type Span = Range<usize>;
 
 #[derive(Logos, Clone, Debug, PartialEq)]
 #[logos(skip r"[ \t\r\n]+")]
+#[logos(skip r"//[^\n]*")]
+#[logos(skip r"/\*([^*]|\*[^/])*\*/")]
 pub enum Token {
     #[token("if")]
     If,
+    #[token("then")]
+    Then,
     #[token("else")]
     Else,
     #[token("null")]
     Null,
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
 
     #[token("=>")]
     FatArrow,
@@ -46,27 +54,31 @@ pub enum Token {
     #[token("%")]
     Percent,
 
+    #[token("==")]
+    EqEq,
     #[token("!=")]
     NotEq,
     #[token(">=")]
     GtEq,
     #[token("<=")]
     LtEq,
-    #[token("=")]
-    Eq,
     #[token(">")]
     Gt,
     #[token("<")]
     Lt,
     #[token("!")]
     Bang,
+    #[token("&&")]
+    AndAnd,
+    #[token("||")]
+    OrOr,
 
-    #[regex(r"[0-9]+(\.[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
+    #[regex(r"[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
     Num(f64),
 
-    #[regex(r#""[^"]*""#, |lex| {
-        let s = lex.slice();
-        s[1..s.len() - 1].to_string()
+    #[regex(r#""([^"\\]|\\.)*""#, |lex| {
+        let raw = lex.slice();
+        unescape(&raw[1..raw.len()-1])
     })]
     Str(String),
 
@@ -74,12 +86,46 @@ pub enum Token {
     Ident(String),
 }
 
+fn unescape(s: &str) -> Option<String> {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next()? {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                'r' => out.push('\r'),
+                '\\' => out.push('\\'),
+                '"' => out.push('"'),
+                '/' => out.push('/'),
+                'b' => out.push('\u{0008}'),
+                'f' => out.push('\u{000C}'),
+                'u' => {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    if hex.len() != 4 {
+                        return None;
+                    }
+                    let code = u32::from_str_radix(&hex, 16).ok()?;
+                    out.push(char::from_u32(code)?);
+                }
+                _ => return None,
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    Some(out)
+}
+
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::If => write!(f, "if"),
+            Token::Then => write!(f, "then"),
             Token::Else => write!(f, "else"),
             Token::Null => write!(f, "null"),
+            Token::True => write!(f, "true"),
+            Token::False => write!(f, "false"),
             Token::FatArrow => write!(f, "=>"),
             Token::LParen => write!(f, "("),
             Token::RParen => write!(f, ")"),
@@ -95,13 +141,15 @@ impl std::fmt::Display for Token {
             Token::Star => write!(f, "*"),
             Token::Slash => write!(f, "/"),
             Token::Percent => write!(f, "%"),
+            Token::EqEq => write!(f, "=="),
             Token::NotEq => write!(f, "!="),
             Token::GtEq => write!(f, ">="),
             Token::LtEq => write!(f, "<="),
-            Token::Eq => write!(f, "="),
             Token::Gt => write!(f, ">"),
             Token::Lt => write!(f, "<"),
             Token::Bang => write!(f, "!"),
+            Token::AndAnd => write!(f, "&&"),
+            Token::OrOr => write!(f, "||"),
             Token::Num(n) => write!(f, "{}", n),
             Token::Str(s) => write!(f, "\"{}\"", s),
             Token::Ident(s) => write!(f, "{}", s),
@@ -116,7 +164,11 @@ pub struct LexError {
 
 impl std::fmt::Display for LexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unexpected character at {}..{}", self.span.start, self.span.end)
+        write!(
+            f,
+            "unexpected character at {}..{}",
+            self.span.start, self.span.end
+        )
     }
 }
 
