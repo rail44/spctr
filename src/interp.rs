@@ -24,7 +24,7 @@ pub enum Value {
 pub enum Function {
     Native {
         params: Vec<Symbol>,
-        body: Spanned<Expr>,
+        body: Rc<Spanned<Expr>>,
         env: Env,
     },
     Foreign(Rc<dyn Fn(Vec<Value>, &Span) -> EvalResult>),
@@ -35,12 +35,12 @@ pub struct Env(Option<Rc<Frame>>);
 
 pub struct Frame {
     pub binds: Vec<Rc<RefCell<BindState>>>,
-    pub names: HashMap<Symbol, u32>,
+    pub names: Option<HashMap<Symbol, u32>>,
     pub parent: Env,
 }
 
 pub enum BindState {
-    Lazy(Spanned<Expr>),
+    Lazy(Rc<Spanned<Expr>>),
     InProgress,
     Done(Value),
 }
@@ -76,27 +76,21 @@ fn build_root_env() -> Env {
     let iter_stmt = crate::parser::parse(include_str!("stdlib/iterator.spc"))
         .expect("stdlib/iterator.spc must parse");
     crate::resolver::resolve(&iter_stmt, &ROOT_NAMES).expect("stdlib/iterator.spc must resolve");
-    let iter_expr = (Expr::ImmediateBlock(Box::new(iter_stmt)), 0..0);
+    let iter_expr = Rc::new((Expr::ImmediateBlock(Box::new(iter_stmt)), 0..0));
 
     let mut binds: Vec<Rc<RefCell<BindState>>> = Vec::with_capacity(ROOT_NAMES.len());
-    let mut names: HashMap<Symbol, u32> = HashMap::with_capacity(ROOT_NAMES.len());
 
     binds.push(Rc::new(RefCell::new(BindState::Lazy(iter_expr))));
-    names.insert(intern("Iterator"), 0);
-
     binds.push(Rc::new(RefCell::new(BindState::Done(
         crate::stdlib::list::module(),
     ))));
-    names.insert(intern("List"), 1);
-
     binds.push(Rc::new(RefCell::new(BindState::Done(
         crate::stdlib::string::module(),
     ))));
-    names.insert(intern("String"), 2);
 
     Env(Some(Rc::new(Frame {
         binds,
-        names,
+        names: None,
         parent: Env::empty(),
     })))
 }
@@ -135,17 +129,23 @@ fn force(env: &Env, bind: &Rc<RefCell<BindState>>, span: &Span) -> EvalResult {
 }
 
 pub fn interpret_statement(stmt: &Statement, env: &Env) -> EvalResult {
-    let frame = make_frame(&stmt.definitions, env);
+    let frame = make_frame(&stmt.definitions, env, false);
     let new_env = Env(Some(Rc::new(frame)));
     interpret(&stmt.body, &new_env)
 }
 
-fn make_frame(defs: &[Bind], parent: &Env) -> Frame {
+fn make_frame(defs: &[Bind], parent: &Env, with_names: bool) -> Frame {
     let mut binds = Vec::with_capacity(defs.len());
-    let mut names = HashMap::with_capacity(defs.len());
+    let mut names = if with_names {
+        Some(HashMap::with_capacity(defs.len()))
+    } else {
+        None
+    };
     for (i, ((name, _), body)) in defs.iter().enumerate() {
-        names.insert(name.clone(), i as u32);
-        binds.push(Rc::new(RefCell::new(BindState::Lazy(body.clone()))));
+        if let Some(n) = names.as_mut() {
+            n.insert(*name, i as u32);
+        }
+        binds.push(Rc::new(RefCell::new(BindState::Lazy(Rc::new(body.clone())))));
     }
     Frame {
         binds,
@@ -158,7 +158,7 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
     let (e, span) = (&expr.0, &expr.1);
     match e {
         Expr::Number(n) => Ok(Value::Number(*n)),
-        Expr::String(s) => Ok(Value::String(Rc::new(s.clone()))),
+        Expr::String(s) => Ok(Value::String(s.clone())),
         Expr::Null => Ok(Value::Null),
         Expr::Variable(var) => {
             let bref = var.resolved.get().ok_or_else(|| {
@@ -187,15 +187,15 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
             Ok(Value::List(Rc::new(vs)))
         }
         Expr::Function(params, body) => {
-            let param_names = params.iter().map(|(n, _)| n.clone()).collect();
+            let param_names = params.iter().map(|(n, _)| *n).collect();
             Ok(Value::Function(Function::Native {
                 params: param_names,
-                body: body.as_ref().clone(),
+                body: Rc::new(body.as_ref().clone()),
                 env: env.clone(),
             }))
         }
         Expr::Block(defs) => {
-            let frame = make_frame(defs, env);
+            let frame = make_frame(defs, env, true);
             Ok(Value::Block(Rc::new(frame)))
         }
         Expr::ImmediateBlock(stmt) => interpret_statement(stmt, env),
@@ -247,7 +247,14 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
 }
 
 fn access_field(frame: &Rc<Frame>, name: Symbol, span: &Span) -> EvalResult {
-    let slot = frame.names.get(&name).ok_or_else(|| {
+    let names = frame.names.as_ref().ok_or_else(|| {
+        Diagnostic::new(
+            span.clone(),
+            "field access on non-record frame",
+            "internal: frame has no field index",
+        )
+    })?;
+    let slot = names.get(&name).ok_or_else(|| {
         Diagnostic::new(
             span.clone(),
             format!("no such field: {}", display(name)),
@@ -291,14 +298,12 @@ pub fn call_value(callee: Value, args: Vec<Value>, span: &Span) -> EvalResult {
                 ));
             }
             let mut binds = Vec::with_capacity(args.len());
-            let mut names = HashMap::with_capacity(args.len());
-            for (i, (p, a)) in params.iter().zip(args.into_iter()).enumerate() {
-                names.insert(p.clone(), i as u32);
+            for (_p, a) in params.iter().zip(args.into_iter()) {
                 binds.push(Rc::new(RefCell::new(BindState::Done(a))));
             }
             let frame = Frame {
                 binds,
-                names,
+                names: None,
                 parent: env,
             };
             interpret(&body, &Env(Some(Rc::new(frame))))
@@ -412,7 +417,11 @@ impl fmt::Display for Value {
             }
             Value::Function(_) => write!(f, "[function]"),
             Value::Block(b) => {
-                let mut names: Vec<&str> = b.names.keys().map(|s| display(*s)).collect();
+                let mut names: Vec<&str> = b
+                    .names
+                    .as_ref()
+                    .map(|n| n.keys().map(|s| display(*s)).collect())
+                    .unwrap_or_default();
                 names.sort();
                 write!(f, "{{{}}}", names.join(", "))
             }
