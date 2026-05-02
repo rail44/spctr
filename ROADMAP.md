@@ -1,20 +1,21 @@
 # spctr ROADMAP
 
-## 現在地（2026-05-02 時点）
+## 現在地（2026-05-03 時点）
 
 完成しているもの：
 
 - **JSON superset** な構文。任意の JSON ドキュメントが valid spctr
-- **HM 風型推論**。注釈ゼロで多相型が flow する
+- **HM 風型推論**。注釈ゼロで多相型が flow する。typeck は per-node 型を `node_types: HashMap<usize, Type>` に記録し JIT が monomorphization に使う
 - **tree-walker インタプリタ**（`src/interp.rs`）が主軸。fib(25) ≒ 37ms
 - **stdlib（全 Rust 実装、全 typed）**：`List`(10) / `String`(6) / `Number`(10) / `import`
 - **resolver パス**で `Variable(VarRef)` を `BindRef(depth, slot)` に解決
 - **ariadne** によるスパン付きエラー表示
 - **rustyline REPL**（引数なし or `--repl`）
-- **insta** スナップショットテスト 24個
+- **insta** スナップショットテスト 24個 + JIT スモークテスト 34個
 - **criterion** ベンチ
 - **`import("./path")`** によるユーザライブラリ
 - **`--type`** で型を表示、**`--check`** で型エラーのみ確認
+- **Cranelift JIT (Phase 3f)**（`src/jit.rs`、`--jit` フラグ）：数値 + first-class function + closure + polymorphic multi-instance + record + top-level non-function bindings + list + string + stdlib + `&&`/`||` 短絡 + null + ImmediateBlock + **任意の戻り値の display**（`spctr_print` 経由で record/list/string も tree-walker と同じ出力）。`run()` は数値専用、`run_with_display()` は任意の型を JIT 内で format & print。fib(38) tree-walker 18.4s → JIT 0.31s ≒ 60倍
 
 ## やらないと決めたこと
 
@@ -48,13 +49,34 @@
 AST → Cranelift IR 直行で native コード生成。tree-walker は reference impl として残す。
 
 **段階**：
-1. 数値演算のみ JIT（fib が JIT で動く）
-2. クロージャ + ヒープ helper（runtime helper を `extern "C"` で呼ぶ）
-3. 値表現（NaN-boxing or タグ付き構造体）
-4. records / lists / strings
+1. ✅ 数値演算のみ JIT（fib が JIT で動く）— done 2026-05-03
+2. ✅ クロージャ + ヒープ helper（runtime helper を `extern "C"` で呼ぶ）— done 2026-05-03
+2.5. ✅ Polymorphic multi-instance — done 2026-05-03
+3a. ✅ Records（block + field access）— done 2026-05-03
+3d. ✅ Top-level non-function bindings（`add5: make_adder(5)`）— done 2026-05-03
+3b. ✅ Lists（element ty ごとに monomorphize、`[len: u32][slot: 8B]*n` layout）— done 2026-05-03
+3c. ✅ Strings（leak した `[len: u32][_pad: u32][bytes]` 静的バッファ＋`spctr_str_eq` 構造比較。`==` / `!=` を IR type で dispatch）— done 2026-05-03
+3e. ✅ stdlib 連携：List/String/Number 全 26 関数 — done 2026-05-03
+3f. ✅ `&&` / `||` 短絡、null、ImmediateBlock、任意戻り値 display（B path） — done 2026-05-03
+3g. （未着手）import、null union、record-by-string indexing、Block 内 forward reference 緩和、性能 polishing
+4. NaN-boxing にスイッチ（必要になったら）— Path A への切り替え選択肢として残す
+
+**Phase 3f までできること**：上記すべて + `&&`/`||` 短絡 + null + ImmediateBlock + 任意の戻り値型を JIT 内で format & print（record/list/string も tree-walker と diff 一致）。`examples/math.spc`、`examples/util.spc` のような module-shape プログラムが JIT で正しく走って表示される。  
+**Phase 3f でできないこと**：import、closure/record/list の構造比較、null と他型の union、Block 内 forward reference、function 内で後の top-level value への forward reference、record-by-string indexing。
+
+**Closure layout**: `[fn_ptr: 8][n_caps: 4][_pad: 4][cap_slot_0: 8][cap_slot_1: 8]...`。`spctr_alloc_closure(fn_ptr, n_caps)` でヒープから確保（leak）。すべての関数は `(closure_ptr: i64, args...) -> ret` の ABI。  
+**Record layout**: `[slot_0: 8][slot_1: 8]...`。`spctr_alloc_record(n_slots)` で確保。field offset = `8 * field_index`、field type は `Type::Record` の宣言順。  
+**List layout**: `[length: u32][_pad: u32][slot: 8B]*n`。`spctr_alloc_list(n)` で確保。indexing は `8 + 8 * idx` offset（length header をスキップ）。  
+**String layout**: `[length: u32][_pad: u32][bytes]`。リテラルは JIT compile 時に `Box::leak` で静的領域に置いてポインタ定数を埋め込む。等価比較は `spctr_str_eq` で長さチェック→バイト比較。  
+**stdlib dispatch**: `Call(Access(Variable(M), field), args)` パターンで `M` が `List`/`String`/`Number`（root frame slot 0/1/2）かを `distance_to_root(env)` で判定。マッチしたら intrinsic（Cranelift 直命令）か runtime helper か inline ループに dispatch。`Type::Module` は capture 対象から除外（statically resolved）。  
+**Inline loops (List.map/filter/reduce)**: 入出力 element type を typeck から取り、closure を `call_indirect` で呼ぶループ block を JIT で構築。filter は worst-case 確保→末尾で length patch。  
+**Display path**: `run_with_display()` 経由で `Compiler.display=true`、main の body 値を `emit_display(val, ty, ...)` 再帰関数で format して `spctr_print` に流し込む。bool/list は branch/loop block を JIT で構築、record は alphabetical sort で interp と同じ出力に。`__spctr_main` の戻り値は常に f64 で、display モードでは sentinel 0.0。`run()` は今まで通り数値専用（テスト用）、`run_with_display()` を main.rs から呼ぶ。  
+**Top-level instances**: `TopInstance.kind = Function | Value(IrType)`。Phase A で全 function closure pre-alloc + 全 CVar declare。Phase B で source order に function captures populate / value body 評価 def_var。後ろの value への forward ref（function capture / value body 双方）を compile time reject。  
+**Monomorphization**: typeck の per-node types を使い、worklist BFS で全 function instance を発見。main の body と全 non-function binding body から seed → 各 instance の body を所属 subst で scan → 新たな use を発見 → 不動点。`FuncKey = (expr_ptr, mono_ty_str)` で `funcs` をキー化、`Capture` も `mono_ty_str` を保持して allocation 時に正しい `TopInstance` に dispatch。  
+**Block frames**: `CompileEnv.block_frames: Vec<BlockFrame>` で record_ptr + populated count を innermost-first で stack。bref.depth が block_frames に届く間は record から load、超えた分だけ底の Function/Main に届く。collect_captures / collect_uses_in も Block / ImmediateBlock で layer +1。
 
 **コスト**：とても大
-**効果**：性能が二桁オーダで伸びる。学習として圧倒的に濃い
+**効果**：性能が二桁オーダで伸びる（実測）。学習として圧倒的に濃い
 
 ### (γ) WASM 出力
 

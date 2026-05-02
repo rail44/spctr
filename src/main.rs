@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{App, Arg};
-use spctr::{diag, interp, parser, resolver, stdlib::imports, typeck};
+use spctr::{diag, interp, jit, parser, resolver, stdlib::imports, typeck};
 
 use std::fs;
 use std::process::ExitCode;
@@ -15,9 +15,11 @@ fn main() -> Result<ExitCode> {
         .arg(Arg::with_name("repl").long("repl").takes_value(false))
         .arg(Arg::with_name("type").long("type").takes_value(false))
         .arg(Arg::with_name("check").long("check").takes_value(false))
+        .arg(Arg::with_name("jit").long("jit").takes_value(false))
         .get_matches();
     let show_type = matches.is_present("type");
     let only_check = matches.is_present("check");
+    let use_jit = matches.is_present("jit");
 
     let mode = if matches.is_present("repl") {
         Mode::Repl
@@ -37,7 +39,7 @@ fn main() -> Result<ExitCode> {
 
     let handle = thread::Builder::new()
         .stack_size(INTERP_STACK_SIZE)
-        .spawn(move || run(mode, show_type, only_check))?;
+        .spawn(move || run(mode, show_type, only_check, use_jit))?;
     handle.join().expect("interpreter thread panicked")
 }
 
@@ -46,14 +48,22 @@ enum Mode {
     Repl,
 }
 
-fn run(mode: Mode, show_type: bool, only_check: bool) -> Result<ExitCode> {
+fn run(mode: Mode, show_type: bool, only_check: bool, use_jit: bool) -> Result<ExitCode> {
     match mode {
-        Mode::Source { filename, source } => run_source(&filename, &source, show_type, only_check),
+        Mode::Source { filename, source } => {
+            run_source(&filename, &source, show_type, only_check, use_jit)
+        }
         Mode::Repl => run_repl(),
     }
 }
 
-fn run_source(filename: &str, source: &str, show_type: bool, only_check: bool) -> Result<ExitCode> {
+fn run_source(
+    filename: &str,
+    source: &str,
+    show_type: bool,
+    only_check: bool,
+    use_jit: bool,
+) -> Result<ExitCode> {
     if let Some(parent) = std::path::Path::new(filename).parent() {
         if !parent.as_os_str().is_empty() {
             imports::set_current_dir(parent.to_path_buf());
@@ -90,6 +100,19 @@ fn run_source(filename: &str, source: &str, show_type: bool, only_check: bool) -
                 ExitCode::FAILURE
             });
         }
+    }
+
+    if use_jit {
+        // JIT prints the value internally via `spctr_print` so it can render
+        // any program type (record / list / string / etc.) without forcing
+        // `__spctr_main` to vary its return ABI.
+        return match jit::run_with_display(&ast) {
+            Ok(()) => Ok(ExitCode::SUCCESS),
+            Err(d) => {
+                diag::report(filename, source, &d);
+                Ok(ExitCode::FAILURE)
+            }
+        };
     }
 
     match interp::run(&ast) {

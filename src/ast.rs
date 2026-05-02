@@ -13,7 +13,7 @@ pub struct Statement {
 
 pub type Bind = (Spanned<Symbol>, Spanned<Expr>);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BindRef {
     pub depth: u32,
     pub slot: u32,

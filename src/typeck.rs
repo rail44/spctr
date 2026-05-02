@@ -8,6 +8,9 @@ use std::collections::{HashMap, HashSet};
 pub struct TypeCheckResult {
     pub program_type: Type,
     pub warnings: Vec<Diagnostic>,
+    /// Per-expression resolved types, keyed by `&expr as *const Spanned<Expr> as usize`.
+    /// Only valid while the AST stays alive at the same address.
+    pub node_types: HashMap<usize, Type>,
 }
 
 pub fn check(stmt: &Statement, root_types: &[Type]) -> TypeCheckResult {
@@ -17,9 +20,16 @@ pub fn check(stmt: &Statement, root_types: &[Type]) -> TypeCheckResult {
     };
     let program_type = inferer.infer_statement(stmt, &mut env);
     let resolved = program_type.apply(&inferer.subst);
+    let subst = inferer.subst;
+    let node_types: HashMap<usize, Type> = inferer
+        .node_types
+        .into_iter()
+        .map(|(k, t)| (k, t.apply(&subst)))
+        .collect();
     TypeCheckResult {
         program_type: resolved,
         warnings: inferer.warnings,
+        node_types,
     }
 }
 
@@ -43,6 +53,7 @@ struct Inferer {
     next_var: u32,
     subst: Subst,
     warnings: Vec<Diagnostic>,
+    node_types: HashMap<usize, Type>,
 }
 
 impl Inferer {
@@ -51,6 +62,7 @@ impl Inferer {
             next_var: INFERER_VAR_START,
             subst: Subst::new(),
             warnings: Vec::new(),
+            node_types: HashMap::new(),
         }
     }
 
@@ -209,6 +221,13 @@ impl Inferer {
     }
 
     fn infer(&mut self, expr: &Spanned<Expr>, env: &mut TypeEnv) -> Type {
+        let ty = self.infer_inner(expr, env);
+        let key = expr as *const _ as usize;
+        self.node_types.insert(key, ty.clone());
+        ty
+    }
+
+    fn infer_inner(&mut self, expr: &Spanned<Expr>, env: &mut TypeEnv) -> Type {
         match &expr.0 {
             Expr::Number(_) => Type::Number,
             Expr::String(_) => Type::String,
@@ -347,7 +366,17 @@ impl Inferer {
                 let idx_t = self.infer(idx, env).apply(&self.subst);
                 match &arr_t {
                     Type::Any => Type::Any,
-                    Type::Var(_) => Type::Any,
+                    // Unresolved arr type: assume it's a list so callers like
+                    // `nth: (l, n) => l[n]` get a useful type. (Record-by-string
+                    // indexing always has a more specific arr type, so this
+                    // branch only fires when the type is genuinely free.)
+                    Type::Var(_) => {
+                        let elem = self.fresh();
+                        let list_ty = Type::List(Box::new(elem.clone()));
+                        self.unify(&arr_t, &list_ty, &arr.1);
+                        self.unify(&idx_t, &Type::Number, &idx.1);
+                        elem.apply(&self.subst)
+                    }
                     Type::List(elem) => {
                         self.unify(&idx_t, &Type::Number, &idx.1);
                         elem.as_ref().apply(&self.subst)
