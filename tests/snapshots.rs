@@ -51,10 +51,10 @@ fn bool_literals() {
 
 #[test]
 fn short_circuit() {
-    // && returns falsy lhs without evaluating rhs
-    assert_snapshot!(run("false && undefined_var"), @"false");
+    // && returns falsy lhs without evaluating rhs (rhs would be runtime error)
+    assert_snapshot!(run(r#"false && (1 + "wrong")"#), @"false");
     // || returns truthy lhs without evaluating rhs
-    assert_snapshot!(run("true || undefined_var"), @"true");
+    assert_snapshot!(run(r#"true || (1 + "wrong")"#), @"true");
 }
 
 #[test]
@@ -87,8 +87,7 @@ fn json_literal() {
 
 #[test]
 fn string_escapes() {
-    assert_snapshot!(run(r#""hello\nworld""#), @r###""hello
-world""###);
+    assert_snapshot!(run(r#""hello\nworld""#), @r###""hello\nworld""###);
     assert_snapshot!(run(r#""quote: \"hi\"""#), @r###""quote: \"hi\"""###);
     assert_snapshot!(run(r#""é""#), @r###""é""###);
 }

@@ -4,7 +4,7 @@ use crate::lexer::Span;
 use crate::symbol::{display, intern, Symbol};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::rc::Rc;
 
 pub type EvalResult = Result<Value, Diagnostic>;
@@ -426,7 +426,21 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Number(n) => write!(f, "{}", n),
-            Value::String(s) => write!(f, "\"{}\"", s),
+            Value::String(s) => {
+                f.write_str("\"")?;
+                for c in s.chars() {
+                    match c {
+                        '"' => f.write_str("\\\"")?,
+                        '\\' => f.write_str("\\\\")?,
+                        '\n' => f.write_str("\\n")?,
+                        '\t' => f.write_str("\\t")?,
+                        '\r' => f.write_str("\\r")?,
+                        c if (c as u32) < 0x20 => write!(f, "\\u{:04x}", c as u32)?,
+                        c => f.write_char(c)?,
+                    }
+                }
+                f.write_str("\"")
+            }
             Value::Bool(b) => write!(f, "{}", b),
             Value::Null => write!(f, "null"),
             Value::List(v) => {
