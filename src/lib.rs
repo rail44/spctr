@@ -6,3 +6,5 @@ pub mod parser;
 pub mod resolver;
 pub mod stdlib;
 pub mod symbol;
+pub mod typeck;
+pub mod types;
