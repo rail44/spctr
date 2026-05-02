@@ -11,7 +11,7 @@ logos = "0.15"
 anyhow = "1"
 ariadne = "0.5"
 lasso = { version = "0.7", features = ["multi-threaded"] }
-rustyline = "17"
+rustyline = "18"
 cranelift-codegen = "0.131"
 cranelift-frontend = "0.131"
 cranelift-jit = "0.131"
