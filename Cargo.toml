@@ -14,7 +14,7 @@ lasso = { version = "0.7", features = ["multi-threaded"] }
 rustyline = "17"
 
 [dev-dependencies]
-criterion = "0.7"
+criterion = "0.8"
 insta = "1"
 
 [[bench]]
