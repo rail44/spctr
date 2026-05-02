@@ -65,7 +65,7 @@ impl Env {
     }
 }
 
-pub const ROOT_NAMES: [&str; 3] = ["Iterator", "List", "String"];
+pub const ROOT_NAMES: [&str; 4] = ["Iterator", "List", "String", "Number"];
 
 pub fn root_types() -> Vec<crate::types::Type> {
     use crate::types::Type;
@@ -73,6 +73,7 @@ pub fn root_types() -> Vec<crate::types::Type> {
         Type::Any, // Iterator: typed as Any until we add row polymorphism
         crate::stdlib::list::ty(),
         crate::stdlib::string::ty(),
+        crate::stdlib::number::ty(),
     ]
 }
 
@@ -95,6 +96,9 @@ fn build_root_env() -> Env {
     ))));
     binds.push(Rc::new(RefCell::new(BindState::Done(
         crate::stdlib::string::module(),
+    ))));
+    binds.push(Rc::new(RefCell::new(BindState::Done(
+        crate::stdlib::number::module(),
     ))));
 
     Env(Some(Rc::new(Frame {
