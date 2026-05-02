@@ -81,8 +81,20 @@ fn json_literal() {
     // a pure JSON object should evaluate to itself (formatted)
     assert_snapshot!(
         run(r#"{"name": "Alice", "age": 30, "active": true}"#),
-        @"{active, age, name}"
+        @r###"{"active": true, "age": 30, "name": "Alice"}"###
     );
+}
+
+#[test]
+fn import_basic() {
+    use std::fs;
+    let dir = std::env::temp_dir().join(format!("spctr-test-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("lib.spc"), "{\n  add: (a, b) => a + b\n}\n").unwrap();
+    let path = dir.join("lib.spc");
+    let src = format!(r#"m: import("{}"), m.add(3, 4)"#, path.display());
+    assert_snapshot!(run(&src), @"7");
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

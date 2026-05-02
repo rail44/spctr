@@ -65,19 +65,35 @@ impl Env {
     }
 }
 
-pub const ROOT_NAMES: [&str; 3] = ["List", "String", "Number"];
+pub const ROOT_NAMES: [&str; 4] = ["List", "String", "Number", "import"];
 
 pub fn root_types() -> Vec<crate::types::Type> {
     vec![
         crate::stdlib::list::ty(),
         crate::stdlib::string::ty(),
         crate::stdlib::number::ty(),
+        crate::stdlib::imports::ty().ty,
     ]
 }
 
 pub fn run(ast: &Statement) -> EvalResult {
     let env = build_root_env();
     interpret_statement(ast, &env)
+}
+
+/// Like `run`, but eagerly forces all top-level definitions before evaluating
+/// the body. Used by `import` so that side-effecting computations dependent on
+/// the current source directory (such as nested imports) execute while the
+/// imported file's directory is still set.
+pub fn run_eager(ast: &Statement) -> EvalResult {
+    let env = build_root_env();
+    let frame = make_frame(&ast.definitions, &env, false);
+    let new_env = Env(Some(Rc::new(frame)));
+    for (i, (_, body)) in ast.definitions.iter().enumerate() {
+        let cell = new_env.0.as_ref().unwrap().binds[i].clone();
+        force(&new_env, &cell, &body.1)?;
+    }
+    interpret(&ast.body, &new_env)
 }
 
 fn build_root_env() -> Env {
@@ -92,6 +108,9 @@ fn build_root_env() -> Env {
     binds.push(Rc::new(RefCell::new(BindState::Done(
         crate::stdlib::number::module(),
     ))));
+    binds.push(Rc::new(RefCell::new(BindState::Done(Value::Function(
+        Function::Foreign(Rc::new(crate::stdlib::imports::import)),
+    )))));
 
     Env(Some(Rc::new(Frame {
         binds,
@@ -454,13 +473,25 @@ impl fmt::Display for Value {
             }
             Value::Function(_) => write!(f, "[function]"),
             Value::Block(b) => {
-                let mut names: Vec<&str> = b
-                    .names
-                    .as_ref()
-                    .map(|n| n.keys().map(|s| display(*s)).collect())
-                    .unwrap_or_default();
-                names.sort();
-                write!(f, "{{{}}}", names.join(", "))
+                let Some(names) = b.names.as_ref() else {
+                    return write!(f, "{{...}}");
+                };
+                let mut sorted: Vec<(Symbol, u32)> =
+                    names.iter().map(|(k, v)| (*k, *v)).collect();
+                sorted.sort_by_key(|(s, _)| display(*s));
+                let env = Env(Some(b.clone()));
+                let parts: Vec<String> = sorted
+                    .into_iter()
+                    .map(|(name, slot)| {
+                        let bind = b.binds[slot as usize].clone();
+                        let val_str = match force(&env, &bind, &(0..0)) {
+                            Ok(v) => v.to_string(),
+                            Err(_) => "<error>".to_string(),
+                        };
+                        format!("\"{}\": {}", display(name), val_str)
+                    })
+                    .collect();
+                write!(f, "{{{}}}", parts.join(", "))
             }
         }
     }
