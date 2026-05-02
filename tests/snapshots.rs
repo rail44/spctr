@@ -130,19 +130,44 @@ fn recursive_binding() {
 }
 
 #[test]
-fn iterator_map() {
+fn list_range_map() {
     assert_snapshot!(
-        run("Iterator.range(0, 4).map((i) => i * 2).to_list"),
+        run("List.map(List.range(0, 4), (i) => i * 2)"),
         @"[0, 2, 4, 6]"
     );
 }
 
 #[test]
-fn iterator_filter() {
+fn list_filter() {
     assert_snapshot!(
-        run("Iterator.range(0, 10).filter((i) => i % 2 == 0).to_list"),
+        run("List.filter(List.range(0, 10), (i) => i % 2 == 0)"),
         @"[0, 2, 4, 6, 8]"
     );
+}
+
+#[test]
+fn list_reduce() {
+    assert_snapshot!(
+        run("List.reduce(List.range(1, 6), 0, (acc, x) => acc + x)"),
+        @"15"
+    );
+}
+
+#[test]
+fn number_ops() {
+    assert_snapshot!(run("Number.sqrt(Number.pow(3, 2) + Number.pow(4, 2))"), @"5");
+    assert_snapshot!(run(r#"Number.parse("42") + 1"#), @"43");
+    assert_snapshot!(run("Number.toString(3.14)"), @r###""3.14""###);
+}
+
+#[test]
+fn string_ops() {
+    assert_snapshot!(run(r#"String.length("hello")"#), @"5");
+    assert_snapshot!(
+        run(r#"String.split("a,b,c", ",")"#),
+        @r###"["a", "b", "c"]"###
+    );
+    assert_snapshot!(run(r#"String.contains("hello world", "world")"#), @"true");
 }
 
 #[test]

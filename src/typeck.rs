@@ -32,16 +32,6 @@ impl TypeEnv {
         let idx = self.frames.len().checked_sub(1)?.checked_sub(depth as usize)?;
         self.frames.get(idx)?.get(slot as usize)
     }
-
-    fn free_vars(&self) -> HashSet<TypeVar> {
-        let mut set = HashSet::new();
-        for frame in &self.frames {
-            for sch in frame {
-                sch.free_vars(&mut set);
-            }
-        }
-        set
-    }
 }
 
 /// Builtin schemes use TypeVar IDs starting at 0. The inferer's fresh-var

@@ -65,12 +65,10 @@ impl Env {
     }
 }
 
-pub const ROOT_NAMES: [&str; 4] = ["Iterator", "List", "String", "Number"];
+pub const ROOT_NAMES: [&str; 3] = ["List", "String", "Number"];
 
 pub fn root_types() -> Vec<crate::types::Type> {
-    use crate::types::Type;
     vec![
-        Type::Any, // Iterator: typed as Any until we add row polymorphism
         crate::stdlib::list::ty(),
         crate::stdlib::string::ty(),
         crate::stdlib::number::ty(),
@@ -83,14 +81,8 @@ pub fn run(ast: &Statement) -> EvalResult {
 }
 
 fn build_root_env() -> Env {
-    let iter_stmt = crate::parser::parse(include_str!("stdlib/iterator.spc"))
-        .expect("stdlib/iterator.spc must parse");
-    crate::resolver::resolve(&iter_stmt, &ROOT_NAMES).expect("stdlib/iterator.spc must resolve");
-    let iter_expr = Rc::new((Expr::ImmediateBlock(Box::new(iter_stmt)), 0..0));
-
     let mut binds: Vec<Rc<RefCell<BindState>>> = Vec::with_capacity(ROOT_NAMES.len());
 
-    binds.push(Rc::new(RefCell::new(BindState::Lazy(iter_expr))));
     binds.push(Rc::new(RefCell::new(BindState::Done(
         crate::stdlib::list::module(),
     ))));
