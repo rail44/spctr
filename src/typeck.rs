@@ -44,6 +44,11 @@ impl TypeEnv {
     }
 }
 
+/// Builtin schemes use TypeVar IDs starting at 0. The inferer's fresh-var
+/// counter starts past this range so generated vars never collide with
+/// quantified vars in builtin schemes.
+const INFERER_VAR_START: u32 = 1 << 20;
+
 struct Inferer {
     next_var: u32,
     subst: Subst,
@@ -53,7 +58,7 @@ struct Inferer {
 impl Inferer {
     fn new() -> Self {
         Self {
-            next_var: 0,
+            next_var: INFERER_VAR_START,
             subst: Subst::new(),
             warnings: Vec::new(),
         }
