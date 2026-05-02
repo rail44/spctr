@@ -10,3 +10,13 @@ chumsky = "0.10"
 logos = "0.15"
 anyhow = "1"
 ariadne = "0.5"
+lasso = { version = "0.7", features = ["multi-threaded"] }
+rustyline = "17"
+
+[dev-dependencies]
+criterion = "0.7"
+insta = "1"
+
+[[bench]]
+name = "interp"
+harness = false
