@@ -500,6 +500,40 @@ fn string_interpolation_nested() {
 }
 
 #[test]
+fn string_interpolation_auto_stringify_number() {
+    // Auto-stringify routes through `spctr_num_to_string` inside the JIT,
+    // mirroring the tree-walker's `format!("{}", n)`.
+    let src = r#"
+        n: 42,
+        s: "n=${n}",
+        if s == "n=42" then 1 else 0
+    "#;
+    assert_eq!(jit_run(src).unwrap(), 1.0);
+}
+
+#[test]
+fn string_interpolation_auto_stringify_bool_and_null() {
+    let src = r#"
+        b: true,
+        x: null,
+        s: "b=${b}, x=${x}",
+        if s == "b=true, x=null" then 1 else 0
+    "#;
+    assert_eq!(jit_run(src).unwrap(), 1.0);
+}
+
+#[test]
+fn string_interpolation_arithmetic() {
+    let src = r#"
+        a: 3,
+        b: 4,
+        s: "${a} + ${b} = ${a + b}",
+        if s == "3 + 4 = 7" then 1 else 0
+    "#;
+    assert_eq!(jit_run(src).unwrap(), 1.0);
+}
+
+#[test]
 fn triple_nested_block_reads_outer_siblings() {
     // Three block scopes; innermost reads from both immediate-outer and
     // outermost siblings, exercising depths 1 and 2 of the frame stack.

@@ -190,14 +190,21 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
                     crate::ast::InterpPart::Literal(s, _) => out.push_str(s),
                     crate::ast::InterpPart::Expr(e) => match interpret(e, env)? {
                         Value::String(s) => out.push_str(&s),
+                        Value::Number(n) => {
+                            use std::fmt::Write;
+                            // Same format as `Value::Display` for numbers.
+                            let _ = write!(out, "{}", n);
+                        }
+                        Value::Bool(b) => out.push_str(if b { "true" } else { "false" }),
+                        Value::Null => out.push_str("null"),
                         other => {
                             return Err(Diagnostic::new(
                                 e.1.clone(),
                                 format!(
-                                    "string interpolation expects string, got {}",
+                                    "cannot interpolate {} into a string",
                                     other.type_name()
                                 ),
-                                "type mismatch",
+                                "interpolation supports number, string, bool, and null",
                             ));
                         }
                     },
