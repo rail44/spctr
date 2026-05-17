@@ -593,6 +593,29 @@ fn emit_print_value(
     Ok(())
 }
 
+/// Materialize a `[len: u32][_pad: u32][bytes]` buffer for a string literal at
+/// JIT compile time. The buffer is `Box::leak`'d so the compiled IR can embed
+/// its address as an i64 constant; strings are immutable in spctr so sharing
+/// the leaked buffer across runs is safe and the leak is bounded by the
+/// literal count.
+fn emit_string_literal(bcx: &mut FunctionBuilder, s: &str) -> JVal {
+    let bytes = s.as_bytes();
+    let mut buf: Vec<u8> = Vec::with_capacity(8 + bytes.len());
+    buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+    buf.extend_from_slice(&[0u8; 4]);
+    buf.extend_from_slice(bytes);
+    let leaked: &'static [u8] = Box::leak(buf.into_boxed_slice());
+    let ptr = leaked.as_ptr() as i64;
+    JVal {
+        val: bcx.ins().iconst(ir_types::I64, ptr),
+        irty: ir_types::I64,
+    }
+}
+
+fn emit_empty_string(bcx: &mut FunctionBuilder) -> JVal {
+    emit_string_literal(bcx, "")
+}
+
 /// Emit IR that prints a value of static type `ty` to stdout. Uses inline
 /// branches/loops for bools/lists; calls `spctr_num_to_string` for numbers.
 fn emit_display(
@@ -1712,20 +1735,52 @@ fn compile_expr(
             val: bcx.ins().iconst(ir_types::I8, i64::from(*b)),
             irty: ir_types::I8,
         }),
-        Expr::String(s) => {
-            // Build a leaked `[len: u32][_pad: u32][bytes]` buffer at JIT compile
-            // time and embed its address as an i64 constant. Strings are
-            // immutable in spctr, so sharing the leaked buffer across runs is
-            // safe; the leak is bounded by the literal count.
-            let bytes = s.as_bytes();
-            let mut buf: Vec<u8> = Vec::with_capacity(8 + bytes.len());
-            buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
-            buf.extend_from_slice(&[0u8; 4]);
-            buf.extend_from_slice(bytes);
-            let leaked: &'static [u8] = Box::leak(buf.into_boxed_slice());
-            let ptr = leaked.as_ptr() as i64;
+        Expr::String(s) => Ok(emit_string_literal(bcx, s)),
+        Expr::Interpolation(parts) => {
+            // Compile each part to a string ptr (I64). Literal parts go
+            // through emit_string_literal; Expr parts must already have
+            // type `string` (typeck enforces this). Concatenate left-to-right
+            // via the runtime helper spctr_str_concat.
+            if parts.is_empty() {
+                return Ok(emit_empty_string(bcx));
+            }
+            let concat_id = match module.declarations().get_name("spctr_str_concat") {
+                Some(cranelift_module::FuncOrDataId::Func(id)) => id,
+                _ => return Err(internal("spctr_str_concat not declared")),
+            };
+            let concat_ref = module.declare_func_in_func(concat_id, bcx.func);
+
+            let mut acc: Option<IrValue> = None;
+            for p in parts {
+                let v = match p {
+                    crate::ast::InterpPart::Literal(s, _) => emit_string_literal(bcx, s).val,
+                    crate::ast::InterpPart::Expr(e) => {
+                        let j = compile_expr(
+                            bcx, e, env, module, funcs, top_level, node_types, alloc_id, cc,
+                        )?;
+                        if j.irty != ir_types::I64 {
+                            return Err(Diagnostic::new(
+                                e.1.clone(),
+                                format!(
+                                    "JIT: interpolation expects string, got IR type {}",
+                                    j.irty
+                                ),
+                                "type mismatch",
+                            ));
+                        }
+                        j.val
+                    }
+                };
+                acc = Some(match acc {
+                    None => v,
+                    Some(prev) => {
+                        let inst = bcx.ins().call(concat_ref, &[prev, v]);
+                        bcx.inst_results(inst)[0]
+                    }
+                });
+            }
             Ok(JVal {
-                val: bcx.ins().iconst(ir_types::I64, ptr),
+                val: acc.expect("non-empty parts handled above"),
                 irty: ir_types::I64,
             })
         }
@@ -2481,6 +2536,13 @@ fn collect_sibling_refs(expr: &Spanned<Expr>, depth: u32, out: &mut HashSet<u32>
         Expr::Index(a, i) => {
             collect_sibling_refs(a, depth, out);
             collect_sibling_refs(i, depth, out);
+        }
+        Expr::Interpolation(parts) => {
+            for p in parts {
+                if let crate::ast::InterpPart::Expr(e) = p {
+                    collect_sibling_refs(e, depth, out);
+                }
+            }
         }
         Expr::Number(_) | Expr::String(_) | Expr::Null | Expr::Bool(_) => {}
     }

@@ -105,6 +105,33 @@ fn string_escapes() {
 }
 
 #[test]
+fn string_interpolation() {
+    assert_snapshot!(
+        run(r#"name: "world", "hello ${name}!""#),
+        @r###""hello world!""###
+    );
+    assert_snapshot!(
+        run(r#"a: "X", b: "Y", "${a}-${b}-${a}""#),
+        @r###""X-Y-X""###
+    );
+    // `\$` escapes a literal dollar sign so `${...}` can be written literally.
+    assert_snapshot!(
+        run(r#""price: \${5}""#),
+        @r###""price: ${5}""###
+    );
+    // Interp expression itself contains a nested string with its own interp.
+    assert_snapshot!(
+        run(r#"a: "X", "outer ${if a == "X" then "yes ${a}" else "no"} done""#),
+        @r###""outer yes X done""###
+    );
+    // Empty literal fragments on either side of an interp.
+    assert_snapshot!(
+        run(r#"a: "X", "${a}""#),
+        @r###""X""###
+    );
+}
+
+#[test]
 fn comments() {
     assert_snapshot!(run("// comment\n1 + 2"), @"3");
     assert_snapshot!(run("/* block */ 1 + 2"), @"3");

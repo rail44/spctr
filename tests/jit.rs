@@ -463,6 +463,43 @@ fn nested_block_reads_outer_sibling() {
 }
 
 #[test]
+fn string_interpolation_basic() {
+    // jit_run returns a number, so wrap with String.length to check the
+    // concatenated result has the expected length.
+    let src = r#"
+        name: "world",
+        greeting: "hello ${name}!",
+        String.length(greeting)
+    "#;
+    assert_eq!(jit_run(src).unwrap(), 12.0); // "hello world!"
+}
+
+#[test]
+fn string_interpolation_concat_order() {
+    // Pick a return value that disambiguates the concat order: the
+    // "X-Y-X" pattern can only match if parts are concatenated left
+    // to right.
+    let src = r#"
+        a: "X",
+        b: "Y",
+        s: "${a}-${b}-${a}",
+        if s == "X-Y-X" then 1 else 0
+    "#;
+    assert_eq!(jit_run(src).unwrap(), 1.0);
+}
+
+#[test]
+fn string_interpolation_nested() {
+    // Interp expression contains a nested string with its own interp.
+    let src = r#"
+        a: "X",
+        s: "outer ${if a == "X" then "yes ${a}" else "no"} done",
+        if s == "outer yes X done" then 1 else 0
+    "#;
+    assert_eq!(jit_run(src).unwrap(), 1.0);
+}
+
+#[test]
 fn triple_nested_block_reads_outer_siblings() {
     // Three block scopes; innermost reads from both immediate-outer and
     // outermost siblings, exercising depths 1 and 2 of the frame stack.
