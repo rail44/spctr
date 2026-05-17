@@ -91,7 +91,7 @@ AST → Cranelift IR 直行で native コード生成。tree-walker は referenc
 
 - ✅ 型変数を `α/β/γ` に rename して表示 — done 2026-05-17（PR #45）
 - ✅ 64MB stack hack を **8MB に縮小 + TCO 実装** — done 2026-05-17（PR #51）。`interpret` を loop ベースに書き直し、`Call` / `If` / `ImmediateBlock` の tail-position 遷移は `cur` ポインタ更新 + `continue` で Rust スタックを消費しない。tail-recursive `loop_n(1_000_000, 0)` が 8MB スタックで通る。非 tail 再帰（`count(n) => ... count(n-1) + 1`）は依然として 1 spctr フレーム ≈ 1.5KB の Rust スタックを食うので、完全撤廃には full iterative trampoline が必要（将来課題）。
-- ベンチ充実（より多角的な性能測定）
+- ✅ ベンチ充実 — done 2026-05-17。`benches/interp.rs` を旧 Iterator API から List/String/Number stdlib ベースに書き直し。`bench_tail_recursion`（TCO 効果測定）と `bench_stdlib_reduce`（JIT inline `List.reduce` 計測）を追加。同 fib / tail-rec / reduce ソースを tree-walker / JIT 両方で測定するように対比形式に。pre-compile 用に `jit::compile` 関数を新規公開（ベンチで b.iter 外で 1 回コンパイルしてから繰り返し走らせる、leak を回避）。直近の実測：fib(25) 94x、tail-rec 100k loop 20x、sum_range 10k 4.6x の JIT スピードアップ。
 - エラーメッセージの polish
 
 **コスト**：小〜中
