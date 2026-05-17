@@ -333,23 +333,95 @@ fn top_level_record_binding() {
 }
 
 #[test]
-fn forward_value_reference_rejected() {
-    let err = jit_run(
-        "
+fn top_level_function_captures_later_value() {
+    // Phase 3h: a top-level function may capture a top-level value defined
+    // later in source order. Phase B evaluates values first, then populates
+    // function captures, so the closure sees `n=10` by the time `add_n(5)`
+    // is called from main.
+    let src = "
         add_n: (x) => x + n,
         n: 10,
         add_n(5)
+    ";
+    assert_eq!(jit_run(src).unwrap(), 15.0);
+}
+
+#[test]
+fn block_function_captures_later_value() {
+    // Same shape as `top_level_function_captures_later_value` but inside an
+    // immediate block. Block compilation Phase 1 allocates closures with
+    // sibling captures deferred; captures are filled lazily as their
+    // target slots become populated during Phase 2.
+    let src = "
+        outer: () => {
+          add_n: (x) => x + n,
+          n: 10,
+          body: add_n(5)
+        }.body,
+        outer()
+    ";
+    assert_eq!(jit_run(src).unwrap(), 15.0);
+}
+
+#[test]
+fn block_mutual_recursion() {
+    // Two sibling functions capturing each other. Closures alloc'd in
+    // Phase 1 so both captures resolve to valid pointers.
+    let src = "
+        outer: () => {
+          is_even: (n) => if n == 0 then 1 else is_odd(n - 1),
+          is_odd:  (n) => if n == 0 then 0 else is_even(n - 1),
+          body: is_even(10)
+        }.body,
+        outer()
+    ";
+    assert_eq!(jit_run(src).unwrap(), 1.0);
+}
+
+#[test]
+fn top_level_value_forward_reference_rejected() {
+    // Value→value forward reference (one Value reading a later Value)
+    // still requires source order. We now reject it explicitly instead of
+    // silently reading an uninitialized CVar.
+    let err = jit_run(
+        "
+        a: b + 1,
+        b: 5,
+        a
         ",
     )
     .unwrap_err();
     assert!(
-        err.contains("source-order init") || err.contains("defined later"),
+        err.contains("references later value") || err.contains("forward"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn top_level_value_calls_function_with_later_cap_rejected() {
+    // Subtle silent-wrong case: a Value calls a sibling Function whose
+    // captures include a not-yet-evaluated Value. Reject explicitly.
+    let err = jit_run(
+        "
+        v: f(5),
+        n: 10,
+        f: (x) => x + n,
+        v
+        ",
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("calls function whose captures include a later value")
+            || err.contains("forward"),
         "unexpected error: {err}"
     );
 }
 
 #[test]
 fn record_forward_reference_rejected() {
+    // Value→value forward reference inside a block is still rejected.
+    // Function→value would now work; this test specifically pins the
+    // value→value case to keep producing a clean diagnostic.
     let err = jit_run(
         "
         foo: (a) => {y: x + 1, x: a},

@@ -1394,96 +1394,171 @@ impl Compiler {
             }
         }
 
-        // Phase B: in source order, populate function captures or evaluate
-        // value bindings. Iterating in source order guarantees that:
-        // - Values reference only earlier-defined top-level CVars (function
-        //   CVars are pre-allocated, earlier value CVars are populated by
-        //   prior iterations).
-        // - Function captures targeting a value are resolved against an
-        //   already-defined CVar.
+        // Phase B: two-phase to allow function→later-value forward references.
+        //   B1: evaluate Value bindings in source order, def_var their CVars.
+        //   B2: populate Function captures (all values are now def_var'd, so
+        //       any capture target — Function or Value — resolves cleanly).
+        //
+        // A value body that calls a sibling function whose captures point to
+        // a later value would silently read garbage in this order, so we
+        // detect that pattern up-front and reject it with a clear diagnostic.
         let mut order: Vec<usize> = (0..self.top_level_instances.len()).collect();
         order.sort_by_key(|&i| self.top_level_instances[i].slot);
-        for i in order {
+
+        // Pre-compute, per top-level slot, whether that slot's binding is a
+        // function and, if so, whether any of its captures point to a Value
+        // at a later source-order slot. Used by the forward-ref check below.
+        let n_inst = self.top_level_instances.len();
+        let mut func_caps_value_max_slot: Vec<Option<u32>> = vec![None; n_inst];
+        for (i, inst) in self.top_level_instances.iter().enumerate() {
+            if !matches!(inst.kind, TopKind::Function) {
+                continue;
+            }
+            let key: FuncKey = (inst.expr_ptr, inst.mono_ty_str.clone());
+            let info = self.funcs.get(&key).expect("declared").clone();
+            let mut max_value_target: Option<u32> = None;
+            for cap in &info.captures {
+                if cap.inside.depth != 1 {
+                    continue;
+                }
+                let target_kind = self
+                    .top_level_instances
+                    .iter()
+                    .find(|t| t.slot == cap.inside.slot && t.mono_ty_str == cap.mono_ty_str)
+                    .map(|t| t.kind.clone());
+                if matches!(target_kind, Some(TopKind::Value(_))) {
+                    max_value_target = Some(match max_value_target {
+                        Some(prev) => prev.max(cap.inside.slot),
+                        None => cap.inside.slot,
+                    });
+                }
+            }
+            func_caps_value_max_slot[i] = max_value_target;
+        }
+
+        // Per-slot kind lookup for forward-ref checks below.
+        let slot_top_idx: HashMap<u32, usize> = self
+            .top_level_instances
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.slot, i))
+            .collect();
+
+        // B1: evaluate Value bindings.
+        for &i in &order {
             let inst = self.top_level_instances[i].clone();
-            match &inst.kind {
-                TopKind::Function => {
-                    let key: FuncKey = (inst.expr_ptr, inst.mono_ty_str.clone());
-                    let info = self.funcs.get(&key).expect("declared").clone();
-                    let closure_ptr = bcx.use_var(top_vars[i]);
-                    for (cap_idx, cap) in info.captures.iter().enumerate() {
-                        if cap.inside.depth != 1 {
-                            return Err(Diagnostic::new(
-                                body_span(ast, inst.expr_ptr),
-                                "JIT: top-level function references root scope",
-                                "Phase 3 rejects List/String/Number/import",
-                            ));
-                        }
-                        let target_idx = self
-                            .top_level_instances
-                            .iter()
-                            .position(|t| {
-                                t.slot == cap.inside.slot && t.mono_ty_str == cap.mono_ty_str
-                            })
-                            .ok_or_else(|| {
-                                internal(format!(
-                                    "missing top-level instance for capture (slot {}, ty {})",
-                                    cap.inside.slot, cap.mono_ty_str
-                                ))
-                            })?;
-                        // Forward reference to a Value not yet defined.
-                        let target = &self.top_level_instances[target_idx];
-                        if matches!(target.kind, TopKind::Value(_))
-                            && target.slot >= inst.slot
-                        {
-                            return Err(Diagnostic::new(
-                                body_span(ast, inst.expr_ptr),
-                                format!(
-                                    "JIT: top-level function captures value '{}' defined later in source order",
-                                    cap.mono_ty_str
-                                ),
-                                "Phase 3d requires source-order init",
-                            ));
-                        }
-                        let val = bcx.use_var(top_vars[target_idx]);
-                        let offset = CAPTURES_OFFSET + 8 * cap_idx as i32;
-                        bcx.ins().store(MemFlags::trusted(), val, closure_ptr, offset);
+            let TopKind::Value(irty) = inst.kind.clone() else {
+                continue;
+            };
+            // SAFETY: AST outlives the JIT compile.
+            let body: &Spanned<Expr> =
+                unsafe { &*(inst.expr_ptr as *const Spanned<Expr>) };
+
+            // Forward-ref check: walk the body, find sibling refs at the
+            // top-level scope (var.resolved.depth == 0). Reject if any refs
+            // either target a later Value (would read an undefined CVar) or
+            // target a Function whose captures include a later Value (would
+            // call into a closure with un-populated captures).
+            let mut refs: HashSet<u32> = HashSet::new();
+            collect_sibling_refs(body, 0, &mut refs);
+            for r in &refs {
+                let r_slot = *r;
+                let Some(&r_idx) = slot_top_idx.get(&r_slot) else {
+                    continue;
+                };
+                match &self.top_level_instances[r_idx].kind {
+                    TopKind::Value(_) if r_slot > inst.slot => {
+                        return Err(Diagnostic::new(
+                            body.1.clone(),
+                            format!(
+                                "JIT: top-level value '{}' references later value at slot {}",
+                                inst.mono_ty_str, r_slot
+                            ),
+                            "value→value forward reference is not yet supported",
+                        ));
                     }
+                    TopKind::Function => {
+                        if let Some(latest) = func_caps_value_max_slot[r_idx] {
+                            if latest > inst.slot {
+                                return Err(Diagnostic::new(
+                                    body.1.clone(),
+                                    format!(
+                                        "JIT: top-level value '{}' calls function whose captures include a later value at slot {}",
+                                        inst.mono_ty_str, latest,
+                                    ),
+                                    "function→later-value works at top level only when the call site is in main, not in a sibling value",
+                                ));
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                TopKind::Value(irty) => {
-                    // SAFETY: AST outlives the JIT compile.
-                    let body: &Spanned<Expr> =
-                        unsafe { &*(inst.expr_ptr as *const Spanned<Expr>) };
-                    let value_subst = Subst::new();
-                    let env = CompileEnv {
-                        kind: EnvKind::Main {
-                            top_closures: &top_vars,
-                        },
-                        block_frames: Vec::new(),
-                        subst: &value_subst,
-                    };
-                    let module_ptr = &mut self.module as *mut JITModule;
-                    let funcs_ptr = &self.funcs as *const HashMap<FuncKey, FuncInfo>;
-                    let top_level_ptr =
-                        &self.top_level_instances as *const Vec<TopInstance>;
-                    let node_types_ptr = &self.node_types as *const HashMap<usize, Type>;
-                    let alloc_id = self.alloc_closure_id;
-                    let cc = self.call_conv;
-                    let v = unsafe {
-                        compile_expr(
-                            &mut bcx,
-                            body,
-                            &env,
-                            &mut *module_ptr,
-                            &*funcs_ptr,
-                            &*top_level_ptr,
-                            &*node_types_ptr,
-                            alloc_id,
-                            cc,
-                        )
-                    }?;
-                    let v = coerce_to(&mut bcx, v, *irty, &body.1)?;
-                    bcx.def_var(top_vars[i], v);
+            }
+
+            let value_subst = Subst::new();
+            let env = CompileEnv {
+                kind: EnvKind::Main {
+                    top_closures: &top_vars,
+                },
+                block_frames: Vec::new(),
+                subst: &value_subst,
+            };
+            let module_ptr = &mut self.module as *mut JITModule;
+            let funcs_ptr = &self.funcs as *const HashMap<FuncKey, FuncInfo>;
+            let top_level_ptr = &self.top_level_instances as *const Vec<TopInstance>;
+            let node_types_ptr = &self.node_types as *const HashMap<usize, Type>;
+            let alloc_id = self.alloc_closure_id;
+            let cc = self.call_conv;
+            let v = unsafe {
+                compile_expr(
+                    &mut bcx,
+                    body,
+                    &env,
+                    &mut *module_ptr,
+                    &*funcs_ptr,
+                    &*top_level_ptr,
+                    &*node_types_ptr,
+                    alloc_id,
+                    cc,
+                )
+            }?;
+            let v = coerce_to(&mut bcx, v, irty, &body.1)?;
+            bcx.def_var(top_vars[i], v);
+        }
+
+        // B2: populate Function captures. Every CVar target — value or
+        // function — is now def_var'd, so reads are safe.
+        for &i in &order {
+            let inst = self.top_level_instances[i].clone();
+            if !matches!(inst.kind, TopKind::Function) {
+                continue;
+            }
+            let key: FuncKey = (inst.expr_ptr, inst.mono_ty_str.clone());
+            let info = self.funcs.get(&key).expect("declared").clone();
+            let closure_ptr = bcx.use_var(top_vars[i]);
+            for (cap_idx, cap) in info.captures.iter().enumerate() {
+                if cap.inside.depth != 1 {
+                    return Err(Diagnostic::new(
+                        body_span(ast, inst.expr_ptr),
+                        "JIT: top-level function references root scope",
+                        "Phase 3 rejects List/String/Number/import",
+                    ));
                 }
+                let target_idx = self
+                    .top_level_instances
+                    .iter()
+                    .position(|t| {
+                        t.slot == cap.inside.slot && t.mono_ty_str == cap.mono_ty_str
+                    })
+                    .ok_or_else(|| {
+                        internal(format!(
+                            "missing top-level instance for capture (slot {}, ty {})",
+                            cap.inside.slot, cap.mono_ty_str
+                        ))
+                    })?;
+                let val = bcx.use_var(top_vars[target_idx]);
+                let offset = CAPTURES_OFFSET + 8 * cap_idx as i32;
+                bcx.ins().store(MemFlags::trusted(), val, closure_ptr, offset);
             }
         }
 
@@ -1605,10 +1680,13 @@ struct BlockFrame {
     record_ptr: IrValue,
     /// IR types of each slot, in field-declaration order.
     slot_irtys: Vec<IrType>,
-    /// Number of slots already populated. A use with `slot < populated` reads
-    /// from the record; `slot >= populated` is a forward reference and is
-    /// rejected — JIT evaluates Block bindings strictly in source order.
-    populated: u32,
+    /// Per-slot "has its record cell been stored" bit. Function-literal
+    /// bindings are populated in Phase A (before any value body runs) so
+    /// mutual recursion and function→later-value forward refs both work;
+    /// value bindings flip their bit as they're evaluated in source order.
+    /// A read of an un-populated slot is a forward reference and is
+    /// rejected with a diagnostic.
+    populated: Vec<bool>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2019,23 +2097,23 @@ fn compile_immediate_block(
     frames.push(BlockFrame {
         record_ptr,
         slot_irtys: slot_irtys.clone(),
-        populated: 0,
+        populated: vec![false; defs.len()],
     });
-    for (i, (_, body)) in defs.iter().enumerate() {
-        let inner_env = CompileEnv {
-            kind: env.kind.clone(),
-            block_frames: frames.clone(),
-            subst: env.subst,
-        };
-        let v = compile_expr(
-            bcx, body, &inner_env, module, funcs, top_level, node_types, alloc_id, cc,
-        )?;
-        let irty = slot_irtys[i];
-        let v = coerce_to(bcx, v, irty, &body.1)?;
-        let offset = 8 * i as i32;
-        bcx.ins().store(MemFlags::trusted(), v, record_ptr, offset);
-        frames.last_mut().unwrap().populated = (i + 1) as u32;
-    }
+
+    compile_block_bindings(
+        bcx,
+        defs,
+        env,
+        &mut frames,
+        module,
+        funcs,
+        top_level,
+        node_types,
+        alloc_id,
+        cc,
+        record_ptr,
+        &slot_irtys,
+    )?;
 
     // Compile body using the populated frame.
     let body_env = CompileEnv {
@@ -2102,22 +2180,83 @@ fn compile_block(
         .map(|(_, t)| ir_type_for(t, span))
         .collect::<Result<_, _>>()?;
 
-    // Compile each binding under an env that exposes the partial record at
-    // depth=0. After each store, bump `populated` so subsequent siblings can
-    // observe the value.
     let mut frames = env.block_frames.clone();
     frames.push(BlockFrame {
         record_ptr,
         slot_irtys: slot_irtys.clone(),
-        populated: 0,
+        populated: vec![false; defs.len()],
     });
+
+    compile_block_bindings(
+        bcx,
+        defs,
+        env,
+        &mut frames,
+        module,
+        funcs,
+        top_level,
+        node_types,
+        alloc_id,
+        cc,
+        record_ptr,
+        &slot_irtys,
+    )?;
+
+    Ok(JVal {
+        val: record_ptr,
+        irty: ir_types::I64,
+    })
+}
+
+/// Compile the bindings of a block (or immediate block) into a record that
+/// has already been allocated and pushed as the innermost `BlockFrame` on
+/// `frames`.
+///
+/// Three logical phases:
+///
+/// 1. **Allocate functions**: every function-literal binding gets its
+///    closure allocated and stored in the slot. `cap.inside.depth == 1`
+///    captures (sibling references) are deferred to be populated lazily;
+///    captures pointing outside the block are filled immediately. Mutual
+///    recursion among sibling functions works because all sibling-function
+///    closures exist before any are populated.
+///
+/// 2. **Evaluate values in source order**: for each non-function binding,
+///    opportunistically populate any deferred capture whose target slot is
+///    now stored, refuse to compile if a sibling-function reference still
+///    has unsatisfied captures (would be silent-wrong otherwise), then
+///    compile the body and store the result.
+///
+/// 3. **Finalize**: one last opportunistic populate pass cleans up captures
+///    that only needed values from the final iteration. Any cap that's
+///    still pending after that is a true cycle and is rejected.
+#[allow(clippy::too_many_arguments)]
+fn compile_block_bindings(
+    bcx: &mut FunctionBuilder,
+    defs: &[Bind],
+    env: &CompileEnv,
+    frames: &mut Vec<BlockFrame>,
+    module: &mut JITModule,
+    funcs: &HashMap<FuncKey, FuncInfo>,
+    top_level: &[TopInstance],
+    node_types: &HashMap<usize, Type>,
+    alloc_id: FuncId,
+    cc: CallConv,
+    record_ptr: IrValue,
+    slot_irtys: &[IrType],
+) -> Result<(), Diagnostic> {
+    // Phase 1: allocate each function literal, deferring sibling captures.
+    let mut pending: Vec<Vec<(usize, BindRef, IrType)>> = vec![Vec::new(); defs.len()];
     for (i, ((_, _), body)) in defs.iter().enumerate() {
+        if !matches!(body.0, Expr::Function(_, _)) {
+            continue;
+        }
         let inner_env = CompileEnv {
             kind: env.kind.clone(),
             block_frames: frames.clone(),
             subst: env.subst,
         };
-        let v = compile_expr(
+        let (closure_ptr, deferred) = materialize_closure_partial(
             bcx,
             body,
             &inner_env,
@@ -2127,17 +2266,224 @@ fn compile_block(
             node_types,
             alloc_id,
             cc,
+            &body.1,
+            /* defer_sibling */ true,
+        )?;
+        pending[i] = deferred;
+        let offset = 8 * i as i32;
+        bcx.ins().store(MemFlags::trusted(), closure_ptr, record_ptr, offset);
+        frames.last_mut().unwrap().populated[i] = true;
+    }
+
+    // Initial fixpoint pass: any cap whose target was already populated
+    // (other sibling functions, or non-sibling scopes) can be filled now.
+    populate_caps_until_stable(
+        bcx, &mut pending, record_ptr, slot_irtys, frames, env, module, funcs, top_level, defs,
+    )?;
+
+    // Phase 2: evaluate non-function bindings in source order, with an
+    // opportunistic capture-populate pass after each.
+    for (i, ((_, _), body)) in defs.iter().enumerate() {
+        if matches!(body.0, Expr::Function(_, _)) {
+            continue;
+        }
+
+        // Reject any reference to a sibling function whose captures haven't
+        // all been satisfied — calling it would read garbage.
+        let mut refs: HashSet<u32> = HashSet::new();
+        collect_sibling_refs(body, 0, &mut refs);
+        for r in &refs {
+            let r_idx = *r as usize;
+            if r_idx < pending.len() && !pending[r_idx].is_empty() {
+                return Err(Diagnostic::new(
+                    body.1.clone(),
+                    format!(
+                        "JIT: '{}' uses sibling function '{}' before all of its captures are bound",
+                        crate::symbol::display(defs[i].0 .0),
+                        crate::symbol::display(defs[r_idx].0 .0),
+                    ),
+                    "function captures a later-defined value transitively reached from this binding",
+                ));
+            }
+        }
+
+        let inner_env = CompileEnv {
+            kind: env.kind.clone(),
+            block_frames: frames.clone(),
+            subst: env.subst,
+        };
+        let v = compile_expr(
+            bcx, body, &inner_env, module, funcs, top_level, node_types, alloc_id, cc,
         )?;
         let irty = slot_irtys[i];
         let v = coerce_to(bcx, v, irty, &body.1)?;
         let offset = 8 * i as i32;
         bcx.ins().store(MemFlags::trusted(), v, record_ptr, offset);
-        frames.last_mut().unwrap().populated = (i + 1) as u32;
+        frames.last_mut().unwrap().populated[i] = true;
+
+        populate_caps_until_stable(
+            bcx,
+            &mut pending,
+            record_ptr,
+            slot_irtys,
+            frames,
+            env,
+            module,
+            funcs,
+            top_level,
+            defs,
+        )?;
     }
-    Ok(JVal {
-        val: record_ptr,
-        irty: ir_types::I64,
-    })
+
+    // Phase 3: nothing should remain pending. If something does, the only
+    // possibility is a cap whose target was never populated — a true cycle
+    // (e.g. `x: f, f: (_) => x`).
+    for (i, p) in pending.iter().enumerate() {
+        if !p.is_empty() {
+            return Err(Diagnostic::new(
+                defs[i].1.1.clone(),
+                format!(
+                    "JIT: cyclic binding — '{}'s captures depend on values that never resolve",
+                    crate::symbol::display(defs[i].0 .0),
+                ),
+                "binding directly or indirectly refers to itself through its captures",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Loop a single capture-population pass until no further progress is made.
+/// Each pass walks the per-slot pending lists; entries whose target slot is
+/// now populated emit a load+store and are dropped from `pending`.
+#[allow(clippy::too_many_arguments)]
+fn populate_caps_until_stable(
+    bcx: &mut FunctionBuilder,
+    pending: &mut [Vec<(usize, BindRef, IrType)>],
+    record_ptr: IrValue,
+    slot_irtys: &[IrType],
+    frames: &[BlockFrame],
+    env: &CompileEnv,
+    module: &mut JITModule,
+    funcs: &HashMap<FuncKey, FuncInfo>,
+    top_level: &[TopInstance],
+    defs: &[Bind],
+) -> Result<(), Diagnostic> {
+    loop {
+        let mut progress = false;
+        let inner_env = CompileEnv {
+            kind: env.kind.clone(),
+            block_frames: frames.to_vec(),
+            subst: env.subst,
+        };
+        let innermost = frames.last().expect("populate_caps expects at least one block frame");
+        for slot in 0..pending.len() {
+            if pending[slot].is_empty() {
+                continue;
+            }
+            let irty = slot_irtys[slot];
+            let mut closure_ptr: Option<IrValue> = None;
+            let drained: Vec<_> = pending[slot].drain(..).collect();
+            for (cap_idx, outer_bref, cap_irty) in drained {
+                let ready = if outer_bref.depth == 0 {
+                    let t = outer_bref.slot as usize;
+                    t < innermost.populated.len() && innermost.populated[t]
+                } else {
+                    // Non-sibling captures (outer scope) are always available
+                    // by the time Phase 1 finishes.
+                    true
+                };
+                if !ready {
+                    pending[slot].push((cap_idx, outer_bref, cap_irty));
+                    continue;
+                }
+                if closure_ptr.is_none() {
+                    closure_ptr = Some(bcx.ins().load(
+                        irty,
+                        MemFlags::trusted(),
+                        record_ptr,
+                        8 * slot as i32,
+                    ));
+                }
+                let val = load_variable(
+                    bcx,
+                    outer_bref,
+                    None,
+                    &inner_env,
+                    module,
+                    funcs,
+                    top_level,
+                    &defs[slot].1.1,
+                )?;
+                let val = coerce_to(bcx, val, cap_irty, &defs[slot].1.1)?;
+                let offset = CAPTURES_OFFSET + 8 * cap_idx as i32;
+                bcx.ins()
+                    .store(MemFlags::trusted(), val, closure_ptr.unwrap(), offset);
+                progress = true;
+            }
+        }
+        if !progress {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// Collect sibling slots referenced inside `expr` at scope depth `depth`
+/// (0 == the current block's bindings). Walks through nested function
+/// literals because their captures are populated by `materialize_closure`
+/// when the surrounding expression is evaluated, so the targets of those
+/// captures count as eval-time deps of this expression.
+fn collect_sibling_refs(expr: &Spanned<Expr>, depth: u32, out: &mut HashSet<u32>) {
+    match &expr.0 {
+        Expr::Variable(var) => {
+            if let Some(bref) = var.resolved.get() {
+                if bref.depth == depth {
+                    out.insert(bref.slot);
+                }
+            }
+        }
+        Expr::Function(_, b) => collect_sibling_refs(b, depth + 1, out),
+        Expr::List(items) => {
+            for i in items {
+                collect_sibling_refs(i, depth, out);
+            }
+        }
+        Expr::Block(defs) => {
+            for (_, b) in defs {
+                collect_sibling_refs(b, depth + 1, out);
+            }
+        }
+        Expr::ImmediateBlock(s) => {
+            for (_, b) in &s.definitions {
+                collect_sibling_refs(b, depth + 1, out);
+            }
+            collect_sibling_refs(&s.body, depth + 1, out);
+        }
+        Expr::If { cond, cons, alt } => {
+            collect_sibling_refs(cond, depth, out);
+            collect_sibling_refs(cons, depth, out);
+            collect_sibling_refs(alt, depth, out);
+        }
+        Expr::Binary(_, l, r) => {
+            collect_sibling_refs(l, depth, out);
+            collect_sibling_refs(r, depth, out);
+        }
+        Expr::Unary(_, e) => collect_sibling_refs(e, depth, out),
+        Expr::Call(c, args) => {
+            collect_sibling_refs(c, depth, out);
+            for a in args {
+                collect_sibling_refs(a, depth, out);
+            }
+        }
+        Expr::Access(o, _) => collect_sibling_refs(o, depth, out),
+        Expr::Index(a, i) => {
+            collect_sibling_refs(a, depth, out);
+            collect_sibling_refs(i, depth, out);
+        }
+        Expr::Number(_) | Expr::String(_) | Expr::Null | Expr::Bool(_) => {}
+    }
 }
 
 
@@ -2189,14 +2535,15 @@ fn load_variable(
     if bref.depth < n_blocks {
         let frame_idx = bref.depth as usize;
         let frame = &env.block_frames[frame_idx];
-        if bref.slot >= frame.populated {
+        let slot = bref.slot as usize;
+        if slot >= frame.populated.len() || !frame.populated[slot] {
             return Err(Diagnostic::new(
                 span.clone(),
                 "JIT: forward reference inside block",
-                "Phase 3 evaluates block bindings strictly in source order",
+                "Phase 3 evaluates block value bindings strictly in source order",
             ));
         }
-        let irty = frame.slot_irtys[bref.slot as usize];
+        let irty = frame.slot_irtys[slot];
         let offset = 8 * bref.slot as i32;
         let v = bcx.ins().load(irty, MemFlags::trusted(), frame.record_ptr, offset);
         return Ok(JVal { val: v, irty });
@@ -2294,8 +2641,51 @@ fn materialize_closure(
     cc: CallConv,
     span: &Span,
 ) -> Result<JVal, Diagnostic> {
+    let (closure, deferred) = materialize_closure_partial(
+        bcx,
+        func_expr,
+        env,
+        module,
+        funcs,
+        top_level,
+        node_types,
+        alloc_id,
+        cc,
+        span,
+        /* defer_sibling */ false,
+    )?;
+    debug_assert!(deferred.is_empty(), "non-deferred path must populate everything");
+    Ok(JVal {
+        val: closure,
+        irty: ir_types::I64,
+    })
+}
+
+/// Like `materialize_closure` but with optional deferral of sibling captures.
+///
+/// When `defer_sibling` is true (the block Phase A path), captures with
+/// `cap.inside.depth == 1` — i.e. references to other bindings in the same
+/// block scope — are skipped here and returned in the `Vec` so the block
+/// compiler can populate them later, once the sibling slots have been
+/// stored. Non-sibling captures (outer scopes) are populated immediately.
+///
+/// When `defer_sibling` is false this behaves exactly like the legacy
+/// `materialize_closure`: every capture is populated eagerly.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn materialize_closure_partial(
+    bcx: &mut FunctionBuilder,
+    func_expr: &Spanned<Expr>,
+    env: &CompileEnv,
+    module: &mut JITModule,
+    funcs: &HashMap<FuncKey, FuncInfo>,
+    top_level: &[TopInstance],
+    node_types: &HashMap<usize, Type>,
+    alloc_id: FuncId,
+    cc: CallConv,
+    span: &Span,
+    defer_sibling: bool,
+) -> Result<(IrValue, Vec<(usize, BindRef, IrType)>), Diagnostic> {
     let expr_ptr = func_expr as *const _ as usize;
-    // The literal's mono ty in this context = its def ty under env's subst.
     let mono = node_types
         .get(&expr_ptr)
         .cloned()
@@ -2310,7 +2700,6 @@ fn materialize_closure(
         )
     })?;
 
-    // Allocate closure.
     let func_ref = module.declare_func_in_func(info.func_id, bcx.func);
     let fn_addr = bcx.ins().func_addr(ir_types::I64, func_ref);
     let n_caps = bcx.ins().iconst(ir_types::I32, info.captures.len() as i64);
@@ -2318,12 +2707,16 @@ fn materialize_closure(
     let inst = bcx.ins().call(alloc_ref, &[fn_addr, n_caps]);
     let closure = bcx.inst_results(inst)[0];
 
-    // Populate captures from outer env.
+    let mut deferred: Vec<(usize, BindRef, IrType)> = Vec::new();
     for (idx, cap) in info.captures.iter().enumerate() {
         let outer_bref = BindRef {
             depth: cap.inside.depth - 1,
             slot: cap.inside.slot,
         };
+        if defer_sibling && cap.inside.depth == 1 {
+            deferred.push((idx, outer_bref, cap.irty));
+            continue;
+        }
         let val = load_variable(
             bcx,
             outer_bref,
@@ -2340,10 +2733,7 @@ fn materialize_closure(
     }
 
     let _ = cc;
-    Ok(JVal {
-        val: closure,
-        irty: ir_types::I64,
-    })
+    Ok((closure, deferred))
 }
 
 #[allow(clippy::too_many_arguments)]
