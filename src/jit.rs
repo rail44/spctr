@@ -276,7 +276,36 @@ pub fn run_with_display(ast: &Statement) -> Result<(), Diagnostic> {
     run_inner(ast, true).map(|_| ())
 }
 
-fn run_inner(ast: &Statement, display: bool) -> Result<f64, Diagnostic> {
+/// A handle to a compiled spctr program ready to invoke. The module owning
+/// the JITed executable memory is kept alive for as long as the `Compiled`
+/// is alive — drop the handle to release the memory.
+///
+/// Useful for benchmarking (compile once, run many times) and for embedding
+/// where the program will be called repeatedly without re-parsing.
+pub struct Compiled {
+    main_fn: extern "C" fn() -> f64,
+    // SAFETY anchor: `main_fn` is a raw function pointer into the executable
+    // pages owned by `_module`. The module must outlive every call to
+    // `main_fn`, so we hold it here.
+    _module: JITModule,
+}
+
+impl Compiled {
+    /// Invoke the compiled program. Returns the numeric result (or a
+    /// sentinel `0.0` when the program was compiled in display mode).
+    pub fn run(&self) -> f64 {
+        (self.main_fn)()
+    }
+}
+
+/// Compile an AST into a `Compiled` handle without executing it. The
+/// returned handle is independent of the AST and can be invoked
+/// repeatedly. Most users want [`run`] or [`run_with_display`] instead.
+pub fn compile(ast: &Statement) -> Result<Compiled, Diagnostic> {
+    compile_inner(ast, false)
+}
+
+fn compile_inner(ast: &Statement, display: bool) -> Result<Compiled, Diagnostic> {
     let tres = typeck::check(ast, &interp::root_types());
     if let Some(w) = tres.warnings.into_iter().next() {
         return Err(w);
@@ -292,8 +321,21 @@ fn run_inner(ast: &Statement, display: bool) -> Result<f64, Diagnostic> {
         .map_err(|e| internal(format!("finalize: {e}")))?;
     let main_ptr = module.get_finalized_function(main_id);
     let main_fn: extern "C" fn() -> f64 = unsafe { std::mem::transmute(main_ptr) };
-    let result = main_fn();
-    std::mem::forget(module);
+    Ok(Compiled {
+        main_fn,
+        _module: module,
+    })
+}
+
+fn run_inner(ast: &Statement, display: bool) -> Result<f64, Diagnostic> {
+    let compiled = compile_inner(ast, display)?;
+    let result = compiled.run();
+    // Forget the module: spctr programs leak top-level closure allocations
+    // via `Box::leak` and these point into the module's executable pages;
+    // dropping the module would invalidate them. Callers that want to
+    // reclaim memory should use `compile` + `Compiled` and drop the handle
+    // themselves.
+    std::mem::forget(compiled);
     Ok(result)
 }
 

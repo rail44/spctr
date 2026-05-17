@@ -1,12 +1,9 @@
-range: Iterator.range(0, 9000),
+// FizzBuzz over [0, 100). Returns a list of strings — number-typed slots
+// would force a heterogeneous list, so `i` is interpolated as a string.
+fizzbuzz: (i) =>
+  if i % 15 == 0 then "FizzBuzz"
+  else if i % 3 == 0 then "Fizz"
+  else if i % 5 == 0 then "Buzz"
+  else "${i}",
 
-fizzbuzz: (i) => {
-  is_fizz: i % 3 = 0,
-  is_buzz: i % 5 = 0,
-  fizz: if is_fizz "fizz" else "",
-  buzz: if is_buzz "buzz" else "",
-
-  String.concat(fizz, buzz)
-},
-
-range.map((i) => [i, fizzbuzz(i)]).to_list
+List.map(List.range(0, 100), fizzbuzz)
