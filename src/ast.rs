@@ -61,6 +61,11 @@ pub enum UnaryOp {
 pub enum Expr {
     Number(f64),
     String(Rc<String>),
+    /// String interpolation `"a${b}c"`. Each part is concatenated at
+    /// runtime; `Expr` parts must evaluate to a `string`. Plain strings
+    /// (no `${...}`) keep using the cheaper `String` variant; this is
+    /// only produced when the lexer saw at least one `${`.
+    Interpolation(Vec<InterpPart>),
     Variable(VarRef),
     Null,
     Bool(bool),
@@ -78,6 +83,14 @@ pub enum Expr {
     Call(Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
     Access(Box<Spanned<Expr>>, Spanned<Symbol>),
     Index(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+}
+
+#[derive(Clone, Debug)]
+pub enum InterpPart {
+    /// Literal text fragment with its source span (used for diagnostics).
+    Literal(Rc<String>, crate::lexer::Span),
+    /// Embedded expression — must evaluate to a `string`.
+    Expr(Spanned<Expr>),
 }
 
 pub type AST = Statement;

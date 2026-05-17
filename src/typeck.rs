@@ -232,6 +232,15 @@ impl Inferer {
         match &expr.0 {
             Expr::Number(_) => Type::Number,
             Expr::String(_) => Type::String,
+            Expr::Interpolation(parts) => {
+                for p in parts {
+                    if let crate::ast::InterpPart::Expr(e) = p {
+                        let t = self.infer(e, env);
+                        self.unify(&t, &Type::String, &e.1);
+                    }
+                }
+                Type::String
+            }
             Expr::Bool(_) => Type::Bool,
             Expr::Null => Type::Null,
             Expr::Variable(var) => match var.resolved.get() {

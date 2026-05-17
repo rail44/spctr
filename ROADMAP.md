@@ -32,7 +32,7 @@
 - パターンマッチ：`match expr { pat => ... }`
 - `?.` (optional chaining)：`obj?.field?.method()`
 - null との型合流：union or option type
-- 文字列補間：`"hello ${name}"`
+- ✅ 文字列補間：`"hello ${name}"` — done 2026-05-17。`${expr}` 部分は `string` 型必須（typeck で unify、auto-stringify は Phase 4 NaN-boxing 待ち）。lexer は `${` でスキャンを分割して `StrBegin/StrLit/InterpOpen/.../InterpClose/StrEnd` シーケンスを emit、plain string は単一 `Token::Str(s)` のまま。JIT は `spctr_str_concat` で左→右に逐次 concat。
 
 **コスト**：中〜大。パターンマッチは特に大物
 **効果**：実用度が一段上がる

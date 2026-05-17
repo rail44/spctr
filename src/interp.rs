@@ -183,6 +183,28 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
     match e {
         Expr::Number(n) => Ok(Value::Number(*n)),
         Expr::String(s) => Ok(Value::String(s.clone())),
+        Expr::Interpolation(parts) => {
+            let mut out = String::new();
+            for p in parts {
+                match p {
+                    crate::ast::InterpPart::Literal(s, _) => out.push_str(s),
+                    crate::ast::InterpPart::Expr(e) => match interpret(e, env)? {
+                        Value::String(s) => out.push_str(&s),
+                        other => {
+                            return Err(Diagnostic::new(
+                                e.1.clone(),
+                                format!(
+                                    "string interpolation expects string, got {}",
+                                    other.type_name()
+                                ),
+                                "type mismatch",
+                            ));
+                        }
+                    },
+                }
+            }
+            Ok(Value::String(Rc::new(out)))
+        }
         Expr::Null => Ok(Value::Null),
         Expr::Bool(b) => Ok(Value::Bool(*b)),
         Expr::Variable(var) => {

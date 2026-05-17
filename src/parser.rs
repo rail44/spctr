@@ -66,6 +66,32 @@ where
 
         let var = select! { Token::Ident(s) => Expr::Variable(VarRef::new(intern(&s))) };
 
+        // Interpolated string: `StrBegin StrLit (InterpOpen expr InterpClose StrLit)* StrEnd`.
+        // Plain strings flow through `literal` above (their `Token::Str` is
+        // emitted directly by the lexer when no `${` was found).
+        let interp_lit = select! { Token::StrLit(s) => s }
+            .map_with(|s, ex| (s, span_to_range(ex.span())));
+        let interp_string = just(Token::StrBegin)
+            .ignore_then(interp_lit.clone())
+            .then(
+                just(Token::InterpOpen)
+                    .ignore_then(expr.clone())
+                    .then_ignore(just(Token::InterpClose))
+                    .then(interp_lit.clone())
+                    .repeated()
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(Token::StrEnd))
+            .map(|((first, first_span), rest): ((String, std::ops::Range<usize>), Vec<(Spanned<Expr>, (String, std::ops::Range<usize>))>)| {
+                let mut parts: Vec<InterpPart> = Vec::with_capacity(1 + rest.len() * 2);
+                parts.push(InterpPart::Literal(std::rc::Rc::new(first), first_span));
+                for (e, (lit, span)) in rest {
+                    parts.push(InterpPart::Expr(e));
+                    parts.push(InterpPart::Literal(std::rc::Rc::new(lit), span));
+                }
+                Expr::Interpolation(parts)
+            });
+
         let list = expr
             .clone()
             .separated_by(just(Token::Comma))
@@ -135,7 +161,7 @@ where
             .clone()
             .delimited_by(just(Token::LParen), just(Token::RParen));
 
-        let atom = choice((literal, if_expr, func, list, brace, var))
+        let atom = choice((literal, interp_string, if_expr, func, list, brace, var))
             .map_with(|e, ex| (e, span_to_range(ex.span())))
             .or(paren);
 
