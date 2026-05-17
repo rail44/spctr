@@ -89,8 +89,8 @@ AST → Cranelift IR 直行で native コード生成。tree-walker は referenc
 
 ### (ζ) 周辺の磨き込み
 
-- 型変数を `α/β/γ` に rename して表示（今は `?1048576` などの生 ID）
-- 64MB stack hack を消す（TCO or iterative trampoline）
+- ✅ 型変数を `α/β/γ` に rename して表示 — done 2026-05-17（PR #45）
+- ✅ 64MB stack hack を **8MB に縮小 + TCO 実装** — done 2026-05-17（PR #51）。`interpret` を loop ベースに書き直し、`Call` / `If` / `ImmediateBlock` の tail-position 遷移は `cur` ポインタ更新 + `continue` で Rust スタックを消費しない。tail-recursive `loop_n(1_000_000, 0)` が 8MB スタックで通る。非 tail 再帰（`count(n) => ... count(n-1) + 1`）は依然として 1 spctr フレーム ≈ 1.5KB の Rust スタックを食うので、完全撤廃には full iterative trampoline が必要（将来課題）。
 - ベンチ充実（より多角的な性能測定）
 - エラーメッセージの polish
 
@@ -105,11 +105,11 @@ AST → Cranelift IR 直行で native コード生成。tree-walker は referenc
 
 parser の precedence 層を増やすたびに rustc が秒単位→分単位で詰まる。**`.boxed()` で各層を型消去** している。新しい precedence 層を追加するときは必ず `.boxed()` を入れること。これを外すと9分ビルドに戻る。
 
-### 64MB stack hack
+### interp スレッドのスタックサイズ
 
-`src/main.rs` で interp スレッドを `thread::Builder::stack_size(64MB)` で起動している。tree-walker の再帰がそのまま Rust の呼び出しスタックを食うため。TCO を入れるか、iterative trampoline 化するまでは必要。
+`src/main.rs` で interp スレッドを `thread::Builder::stack_size(8MB)` で起動している。Linux pthread のデフォルトと同じ。Phase 3h+TCO 実装後は tail-recursive ループは `cur` ポインタ更新だけで進むため Rust スタックを食わず、`loop_n(1_000_000, 0)` 等が安全に通る。残るのは非 tail 再帰（`count(n) => count(n-1) + 1` 系）で、これは 1 spctr 呼び出し ≈ 1.5KB の Rust フレームを積むため 8MB スタックで深さ約 5000 まで。それ以上の非 tail 再帰には full iterative trampoline 化が必要（未着手）。
 
-`.cargo/config.toml` でテスト時の `RUST_MIN_STACK` も上げてある。
+`.cargo/config.toml` でビルド時の `RUST_MIN_STACK = 64MB` を上げてある。これは tree-walker の runtime とは別物で、chumsky parser combinator の型サイズが巨大なため **rustc 自体が** 大きなスタックを要求する。下げると `cargo build` が SIGSEGV する。
 
 ### lasso interner と TypeVar の衝突
 

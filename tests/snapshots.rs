@@ -145,6 +145,32 @@ fn string_interpolation_auto_stringify() {
 }
 
 #[test]
+fn deep_tail_recursion() {
+    // 100k tail-recursive calls. Before TCO this would blow the 64MB stack
+    // hack; now it loops inside `interpret` without growing Rust frames.
+    assert_snapshot!(
+        run("loop_n: (n, acc) => if n == 0 then acc else loop_n(n - 1, acc + 1), loop_n(100000, 0)"),
+        @"100000"
+    );
+}
+
+#[test]
+fn deep_tail_recursion_with_immediate_block() {
+    // Tail position inside an ImmediateBlock body must also TCO (the loop
+    // updates `cur` to point at `stmt.body`).
+    assert_snapshot!(
+        run(r#"
+          step: (n, acc) => {
+            done: n == 0,
+            if done then acc else step(n - 1, acc + 2)
+          },
+          step(50000, 0)
+        "#),
+        @"100000"
+    );
+}
+
+#[test]
 fn comments() {
     assert_snapshot!(run("// comment\n1 + 2"), @"3");
     assert_snapshot!(run("/* block */ 1 + 2"), @"3");
