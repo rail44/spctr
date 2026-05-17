@@ -616,6 +616,61 @@ fn emit_empty_string(bcx: &mut FunctionBuilder) -> JVal {
     emit_string_literal(bcx, "")
 }
 
+/// Coerce an arbitrary value to its string form for use inside a string
+/// interpolation `"${expr}"`. Mirrors the tree-walker behavior:
+///
+/// - `Number` → `spctr_num_to_string` runtime call.
+/// - `Bool` → branch-free select between the literal `"true"` and `"false"`
+///   buffers.
+/// - `Null` → the literal `"null"` buffer.
+/// - `String` → the value is already a string pointer; pass through.
+/// - Anything else (records / lists / closures) — typeck warns; if we still
+///   reach here we reject with a diagnostic.
+fn stringify_value(
+    bcx: &mut FunctionBuilder,
+    j: JVal,
+    static_ty: Option<&Type>,
+    module: &mut JITModule,
+    span: &Span,
+) -> Result<IrValue, Diagnostic> {
+    match static_ty {
+        Some(Type::Number) => {
+            let id = match module.declarations().get_name("spctr_num_to_string") {
+                Some(cranelift_module::FuncOrDataId::Func(id)) => id,
+                _ => return Err(internal("spctr_num_to_string not declared")),
+            };
+            let r = module.declare_func_in_func(id, bcx.func);
+            let inst = bcx.ins().call(r, &[j.val]);
+            Ok(bcx.inst_results(inst)[0])
+        }
+        Some(Type::Bool) => {
+            let true_lit = emit_string_literal(bcx, "true").val;
+            let false_lit = emit_string_literal(bcx, "false").val;
+            Ok(bcx.ins().select(j.val, true_lit, false_lit))
+        }
+        Some(Type::Null) => Ok(emit_string_literal(bcx, "null").val),
+        Some(Type::String) => {
+            if j.irty != ir_types::I64 {
+                return Err(internal(format!(
+                    "JIT: string-typed value has IR type {} (expected I64)",
+                    j.irty
+                )));
+            }
+            Ok(j.val)
+        }
+        Some(other) => Err(Diagnostic::new(
+            span.clone(),
+            format!("JIT: cannot interpolate {} into a string", other),
+            "supported: number, string, bool, null",
+        )),
+        None => Err(Diagnostic::new(
+            span.clone(),
+            "JIT: interpolation expression has no recorded type",
+            "internal",
+        )),
+    }
+}
+
 /// Emit IR that prints a value of static type `ty` to stdout. Uses inline
 /// branches/loops for bools/lists; calls `spctr_num_to_string` for numbers.
 fn emit_display(
@@ -1737,9 +1792,8 @@ fn compile_expr(
         }),
         Expr::String(s) => Ok(emit_string_literal(bcx, s)),
         Expr::Interpolation(parts) => {
-            // Compile each part to a string ptr (I64). Literal parts go
-            // through emit_string_literal; Expr parts must already have
-            // type `string` (typeck enforces this). Concatenate left-to-right
+            // Compile each part to a string ptr (I64), auto-stringifying
+            // Number/Bool/Null via `stringify_value`. Concatenate left-to-right
             // via the runtime helper spctr_str_concat.
             if parts.is_empty() {
                 return Ok(emit_empty_string(bcx));
@@ -1758,17 +1812,11 @@ fn compile_expr(
                         let j = compile_expr(
                             bcx, e, env, module, funcs, top_level, node_types, alloc_id, cc,
                         )?;
-                        if j.irty != ir_types::I64 {
-                            return Err(Diagnostic::new(
-                                e.1.clone(),
-                                format!(
-                                    "JIT: interpolation expects string, got IR type {}",
-                                    j.irty
-                                ),
-                                "type mismatch",
-                            ));
-                        }
-                        j.val
+                        let static_ty = node_types
+                            .get(&(e as *const _ as usize))
+                            .cloned()
+                            .map(|t| t.apply(env.subst));
+                        stringify_value(bcx, j, static_ty.as_ref(), module, &e.1)?
                     }
                 };
                 acc = Some(match acc {

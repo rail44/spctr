@@ -32,7 +32,7 @@
 - パターンマッチ：`match expr { pat => ... }`
 - `?.` (optional chaining)：`obj?.field?.method()`
 - null との型合流：union or option type
-- ✅ 文字列補間：`"hello ${name}"` — done 2026-05-17。`${expr}` 部分は `string` 型必須（typeck で unify、auto-stringify は Phase 4 NaN-boxing 待ち）。lexer は `${` でスキャンを分割して `StrBegin/StrLit/InterpOpen/.../InterpClose/StrEnd` シーケンスを emit、plain string は単一 `Token::Str(s)` のまま。JIT は `spctr_str_concat` で左→右に逐次 concat。
+- ✅ 文字列補間：`"hello ${name}"` — done 2026-05-17。`${expr}` 部分の型は **{string, number, bool, null}** のいずれか OK（typeck が分岐、未解決の Var は string にデフォルト unify）。auto-stringify：tree-walker は Value 分岐で format、JIT は静的型から `stringify_value` で dispatch（Number→`spctr_num_to_string` / Bool→select `"true"`/`"false"` / Null→`"null"` リテラル / String→そのまま）。record/list/closure は明示的 reject。lexer は `${` でスキャンを分割して `StrBegin/StrLit/InterpOpen/.../InterpClose/StrEnd` シーケンスを emit、plain string は単一 `Token::Str(s)` のまま。JIT は `spctr_str_concat` で左→右に逐次 concat。
 
 **コスト**：中〜大。パターンマッチは特に大物
 **効果**：実用度が一段上がる

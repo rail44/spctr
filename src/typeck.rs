@@ -235,8 +235,27 @@ impl Inferer {
             Expr::Interpolation(parts) => {
                 for p in parts {
                     if let crate::ast::InterpPart::Expr(e) = p {
-                        let t = self.infer(e, env);
-                        self.unify(&t, &Type::String, &e.1);
+                        let t = self.infer(e, env).apply(&self.subst);
+                        match &t {
+                            // Allowed primitives: tree-walker formats each
+                            // natively, JIT dispatches via stringify_value.
+                            Type::String
+                            | Type::Number
+                            | Type::Bool
+                            | Type::Null
+                            | Type::Any => {}
+                            // Unresolved: default to String (the most common
+                            // intent — e.g. `"hello ${name}"` where name is
+                            // a polymorphic parameter).
+                            Type::Var(_) => self.unify(&t, &Type::String, &e.1),
+                            other => {
+                                self.warnings.push(Diagnostic::new(
+                                    e.1.clone(),
+                                    format!("cannot interpolate {} into a string", other),
+                                    "interpolation supports number, string, bool, and null",
+                                ));
+                            }
+                        }
                     }
                 }
                 Type::String

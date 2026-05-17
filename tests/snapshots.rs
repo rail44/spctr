@@ -132,6 +132,19 @@ fn string_interpolation() {
 }
 
 #[test]
+fn string_interpolation_auto_stringify() {
+    // Numbers, bools, and null are auto-stringified into interpolations.
+    assert_snapshot!(run(r#"count: 5, "count=${count}""#), @r###""count=5""###);
+    assert_snapshot!(run(r#"b: true,  "is ${b}""#),          @r###""is true""###);
+    assert_snapshot!(run(r#"b: false, "is ${b}""#),          @r###""is false""###);
+    assert_snapshot!(run(r#"x: null,  "x=${x}""#),           @r###""x=null""###);
+    // Arithmetic expression interpolated.
+    assert_snapshot!(run(r#"a: 3, b: 4, "${a} + ${b} = ${a + b}""#), @r###""3 + 4 = 7""###);
+    // Float formatting matches Display.
+    assert_snapshot!(run(r#"pi: 3.14, "pi = ${pi}""#), @r###""pi = 3.14""###);
+}
+
+#[test]
 fn comments() {
     assert_snapshot!(run("// comment\n1 + 2"), @"3");
     assert_snapshot!(run("/* block */ 1 + 2"), @"3");
