@@ -447,6 +447,41 @@ fn polymorphic_multi_instance() {
 }
 
 #[test]
+fn nested_block_reads_outer_sibling() {
+    // Inner block reads a sibling of the outer block. `block_frames`
+    // stacks innermost-last; `bref.depth` is innermost-first, so the
+    // lookup must index from the back.
+    let src = "
+        outer: () => {
+          a: 1,
+          c: {x: a + 1, y: x + 1, out: y}.out,
+          body: c
+        }.body,
+        outer()
+    ";
+    assert_eq!(jit_run(src).unwrap(), 3.0);
+}
+
+#[test]
+fn triple_nested_block_reads_outer_siblings() {
+    // Three block scopes; innermost reads from both immediate-outer and
+    // outermost siblings, exercising depths 1 and 2 of the frame stack.
+    let src = "
+        outer: () => {
+          a: 1,
+          b: {
+            c: a + 10,
+            d: {e: a + c, f: e + 1, out: f}.out,
+            out: d
+          }.out,
+          body: b
+        }.body,
+        outer()
+    ";
+    assert_eq!(jit_run(src).unwrap(), 13.0);
+}
+
+#[test]
 fn list_equality_number() {
     assert_eq!(
         jit_run("if [1, 2, 3] == [1, 2, 3] then 1 else 0").unwrap(),

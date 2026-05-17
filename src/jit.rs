@@ -2531,9 +2531,13 @@ fn load_variable(
     // Block frames sit between the innermost lookup point and the underlying
     // function/main env. A `bref.depth=K` peels K layers; if K falls within
     // the block-frame stack, we load from the partial record.
+    //
+    // `block_frames` is pushed-to in scope-entry order, so the innermost
+    // frame is at the back. `bref.depth = 0` is innermost, so it indexes
+    // from the back: `block_frames[n_blocks - 1 - depth]`.
     let n_blocks = env.block_frames.len() as u32;
     if bref.depth < n_blocks {
-        let frame_idx = bref.depth as usize;
+        let frame_idx = (n_blocks - 1 - bref.depth) as usize;
         let frame = &env.block_frames[frame_idx];
         let slot = bref.slot as usize;
         if slot >= frame.populated.len() || !frame.populated[slot] {
