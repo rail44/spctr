@@ -373,3 +373,69 @@ fn polymorphic_multi_instance() {
     ";
     assert_eq!(jit_run(src).unwrap(), 13.0);
 }
+
+#[test]
+fn list_equality_number() {
+    assert_eq!(
+        jit_run("if [1, 2, 3] == [1, 2, 3] then 1 else 0").unwrap(),
+        1.0
+    );
+    assert_eq!(
+        jit_run("if [1, 2, 3] == [1, 2, 4] then 1 else 0").unwrap(),
+        0.0
+    );
+    assert_eq!(
+        jit_run("if [1, 2, 3] == [1, 2] then 1 else 0").unwrap(),
+        0.0
+    );
+    assert_eq!(jit_run("if [1, 2] != [1, 3] then 1 else 0").unwrap(), 1.0);
+}
+
+#[test]
+fn list_equality_string() {
+    assert_eq!(
+        jit_run(r#"if ["a", "b"] == ["a", "b"] then 1 else 0"#).unwrap(),
+        1.0
+    );
+    assert_eq!(
+        jit_run(r#"if ["a", "b"] == ["a", "c"] then 1 else 0"#).unwrap(),
+        0.0
+    );
+}
+
+#[test]
+fn nested_list_equality() {
+    assert_eq!(
+        jit_run("if [[1, 2], [3]] == [[1, 2], [3]] then 1 else 0").unwrap(),
+        1.0
+    );
+    assert_eq!(
+        jit_run("if [[1, 2], [3]] == [[1, 2], [4]] then 1 else 0").unwrap(),
+        0.0
+    );
+}
+
+#[test]
+fn record_equality_always_false() {
+    // Matches `interp::value_eq` which has no Record arm and falls through
+    // to `_ => false`.
+    assert_eq!(
+        jit_run("if {x: 1} == {x: 1} then 1 else 0").unwrap(),
+        0.0
+    );
+    assert_eq!(
+        jit_run("if {x: 1} != {x: 1} then 1 else 0").unwrap(),
+        1.0
+    );
+}
+
+#[test]
+fn record_bracket_string_index() {
+    // `r["x"]` is desugared by the parser to `r.x`, so it just needs to
+    // type-check and lower the same way `.x` does.
+    let src = r#"
+        r: {x: 10, y: 20},
+        r["x"] + r["y"]
+    "#;
+    assert_eq!(jit_run(src).unwrap(), 30.0);
+}

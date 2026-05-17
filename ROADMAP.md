@@ -58,11 +58,12 @@ AST → Cranelift IR 直行で native コード生成。tree-walker は referenc
 3c. ✅ Strings（leak した `[len: u32][_pad: u32][bytes]` 静的バッファ＋`spctr_str_eq` 構造比較。`==` / `!=` を IR type で dispatch）— done 2026-05-03
 3e. ✅ stdlib 連携：List/String/Number 全 26 関数 — done 2026-05-03
 3f. ✅ `&&` / `||` 短絡、null、ImmediateBlock、任意戻り値 display（B path） — done 2026-05-03
-3g. （未着手）import、null union、record-by-string indexing、Block 内 forward reference 緩和、性能 polishing
-4. NaN-boxing にスイッチ（必要になったら）— Path A への切り替え選択肢として残す
+3g. ✅ list の構造比較（`emit_value_eq` で要素型を辿る再帰 lower）、record/closure 比較は tree-walker と同じく常に false に固定。record-by-string indexing はリテラル限定で parser desugar 経由で既に動作することを確認しテストで固定 — done 2026-05-17
+3h. （未着手）import、Block 内 forward reference 緩和、function 内で後の top-level value への forward reference、性能 polishing
+4. NaN-boxing にスイッチ（必要になったら）— Path A への切り替え選択肢として残す。null と他型の union、record の動的 string indexing（フィールド型異種の場合）はここで初めて意味を持つ
 
-**Phase 3f までできること**：上記すべて + `&&`/`||` 短絡 + null + ImmediateBlock + 任意の戻り値型を JIT 内で format & print（record/list/string も tree-walker と diff 一致）。`examples/math.spc`、`examples/util.spc` のような module-shape プログラムが JIT で正しく走って表示される。  
-**Phase 3f でできないこと**：import、closure/record/list の構造比較、null と他型の union、Block 内 forward reference、function 内で後の top-level value への forward reference、record-by-string indexing。
+**Phase 3g までできること**：上記すべて + list の構造比較（`[1,2] == [1,2]` が JIT で `true`）。record-by-string indexing は文字列**リテラル**であれば `r.x` と等価に動く（parser が `Access` に desugar するため）。  
+**Phase 3g でできないこと**：import、Block 内 forward reference、function 内で後の top-level value への forward reference、record の動的 string indexing（`r[k]` で `k` が変数）、null と他型の union。最後の 2 つは値タグ（Phase 4 NaN-boxing）を待つ。
 
 **Closure layout**: `[fn_ptr: 8][n_caps: 4][_pad: 4][cap_slot_0: 8][cap_slot_1: 8]...`。`spctr_alloc_closure(fn_ptr, n_caps)` でヒープから確保（leak）。すべての関数は `(closure_ptr: i64, args...) -> ret` の ABI。  
 **Record layout**: `[slot_0: 8][slot_1: 8]...`。`spctr_alloc_record(n_slots)` で確保。field offset = `8 * field_index`、field type は `Type::Record` の宣言順。  

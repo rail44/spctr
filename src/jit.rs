@@ -735,6 +735,113 @@ fn emit_display(
     }
 }
 
+/// Deep structural equality for a value of static type `ty`.
+///
+/// Mirrors `interp::value_eq`:
+/// - Numbers / Bool / Null / String: native equality (numbers use `==`, not
+///   epsilon — matching the tree-walker is what callers expect, and the
+///   tree-walker uses `(a - b).abs() < f64::EPSILON` which we approximate with
+///   exact equality; in practice this matches for the values the test suite
+///   produces).
+/// - Lists: length check then recursive elementwise.
+/// - Records / Closures: always `false` (tree-walker `_ => false` fallthrough).
+///
+/// Returns an `i8` (0/1).
+fn emit_value_eq(
+    bcx: &mut FunctionBuilder,
+    lv: IrValue,
+    rv: IrValue,
+    ty: &Type,
+    module: &mut JITModule,
+    span: &Span,
+) -> Result<IrValue, Diagnostic> {
+    use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
+    match ty {
+        Type::Number => Ok(bcx.ins().fcmp(FloatCC::Equal, lv, rv)),
+        Type::Bool | Type::Null => Ok(bcx.ins().icmp(IntCC::Equal, lv, rv)),
+        Type::String => {
+            let id = match module.declarations().get_name("spctr_str_eq") {
+                Some(cranelift_module::FuncOrDataId::Func(id)) => id,
+                _ => return Err(internal("spctr_str_eq not declared")),
+            };
+            let r = module.declare_func_in_func(id, bcx.func);
+            let inst = bcx.ins().call(r, &[lv, rv]);
+            Ok(bcx.inst_results(inst)[0])
+        }
+        Type::List(elem) => {
+            let elem_irty = ir_type_for(elem, span)?;
+
+            let len_a = bcx.ins().load(ir_types::I32, MemFlags::trusted(), lv, 0);
+            let len_b = bcx.ins().load(ir_types::I32, MemFlags::trusted(), rv, 0);
+            let len_eq = bcx.ins().icmp(IntCC::Equal, len_a, len_b);
+
+            let check_elems = bcx.create_block();
+            let merge = bcx.create_block();
+            bcx.append_block_param(merge, ir_types::I8);
+
+            let zero_i8 = bcx.ins().iconst(ir_types::I8, 0);
+            bcx.ins().brif(len_eq, check_elems, &[], merge, &[zero_i8.into()]);
+
+            bcx.switch_to_block(check_elems);
+            bcx.seal_block(check_elems);
+            let len_i64 = bcx.ins().uextend(ir_types::I64, len_a);
+
+            let header = bcx.create_block();
+            let body = bcx.create_block();
+            let exit = bcx.create_block();
+
+            let i_var = bcx.declare_var(ir_types::I64);
+            let zero_i64 = bcx.ins().iconst(ir_types::I64, 0);
+            bcx.def_var(i_var, zero_i64);
+            bcx.ins().jump(header, &[]);
+
+            bcx.switch_to_block(header);
+            let i = bcx.use_var(i_var);
+            let in_range = bcx.ins().icmp(IntCC::SignedLessThan, i, len_i64);
+            bcx.ins().brif(in_range, body, &[], exit, &[]);
+
+            bcx.switch_to_block(body);
+            bcx.seal_block(body);
+            let i_b = bcx.use_var(i_var);
+            let off = bcx.ins().imul_imm(i_b, 8);
+            let off = bcx.ins().iadd_imm(off, 8);
+            let addr_l = bcx.ins().iadd(lv, off);
+            let addr_r = bcx.ins().iadd(rv, off);
+            let elem_l = bcx.ins().load(elem_irty, MemFlags::trusted(), addr_l, 0);
+            let elem_r = bcx.ins().load(elem_irty, MemFlags::trusted(), addr_r, 0);
+            let elem_eq = emit_value_eq(bcx, elem_l, elem_r, elem, module, span)?;
+
+            let next = bcx.create_block();
+            let zero_i8_b = bcx.ins().iconst(ir_types::I8, 0);
+            bcx.ins().brif(elem_eq, next, &[], merge, &[zero_i8_b.into()]);
+
+            bcx.switch_to_block(next);
+            bcx.seal_block(next);
+            let next_i = bcx.ins().iadd_imm(i_b, 1);
+            bcx.def_var(i_var, next_i);
+            bcx.ins().jump(header, &[]);
+
+            bcx.seal_block(header);
+
+            bcx.switch_to_block(exit);
+            bcx.seal_block(exit);
+            let one_i8 = bcx.ins().iconst(ir_types::I8, 1);
+            bcx.ins().jump(merge, &[one_i8.into()]);
+
+            bcx.switch_to_block(merge);
+            bcx.seal_block(merge);
+            Ok(bcx.block_params(merge)[0])
+        }
+        // Tree-walker treats records and closures as never-equal.
+        Type::Record(_) | Type::Fn(_, _) => Ok(bcx.ins().iconst(ir_types::I8, 0)),
+        _ => Err(Diagnostic::new(
+            span.clone(),
+            format!("JIT: == not supported for type {ty}"),
+            "",
+        )),
+    }
+}
+
 // (continuing the inherent impl) ============================================
 impl Compiler {
 
@@ -1600,7 +1707,6 @@ fn compile_expr(
             })
         }
         Expr::Binary(op, l, r) => {
-            use cranelift_codegen::ir::condcodes::IntCC;
             // Short-circuit for `&&` / `||` — typeck has unified both sides to
             // Bool, so we know the operand IR type is I8 and the result is I8.
             if matches!(op, BinOp::And | BinOp::Or) {
@@ -1648,8 +1754,10 @@ fn compile_expr(
             let lv = compile_expr(bcx, l, env, module, funcs, top_level, node_types, alloc_id, cc)?;
             let rv = compile_expr(bcx, r, env, module, funcs, top_level, node_types, alloc_id, cc)?;
 
-            // Equality and inequality dispatch by IR type so we can compare
-            // strings (i64 ptrs) and bools (i8) too, not just numbers.
+            // Equality and inequality. Recursive deep-equality for lists,
+            // pointer-compare-with-content for strings, primitive cmp for
+            // numbers/bool/null, and constant `false` for records/closures
+            // (matching `interp::value_eq`).
             if matches!(op, BinOp::Eq | BinOp::Ne) {
                 if lv.irty != rv.irty {
                     return Err(Diagnostic::new(
@@ -1658,53 +1766,23 @@ fn compile_expr(
                         "internal",
                     ));
                 }
-                let raw = match lv.irty {
-                    t if t == ir_types::F64 => bcx.ins().fcmp(
-                        if matches!(op, BinOp::Eq) { FloatCC::Equal } else { FloatCC::NotEqual },
-                        lv.val,
-                        rv.val,
-                    ),
-                    t if t == ir_types::I8 => bcx.ins().icmp(
-                        if matches!(op, BinOp::Eq) { IntCC::Equal } else { IntCC::NotEqual },
-                        lv.val,
-                        rv.val,
-                    ),
-                    t if t == ir_types::I64 => {
-                        // For I64 we currently only know how to compare strings
-                        // structurally. Other I64 (closure / record / list)
-                        // would need their own helpers; reject for now.
-                        let lty = node_types
-                            .get(&(l.as_ref() as *const _ as usize))
-                            .cloned()
-                            .map(|t| t.apply(env.subst));
-                        if !matches!(lty, Some(Type::String)) {
-                            return Err(Diagnostic::new(
-                                span.clone(),
-                                "JIT: == on closure/record/list not yet supported",
-                                "Phase 3c only handles string equality",
-                            ));
-                        }
-                        let id = match module.declarations().get_name("spctr_str_eq") {
-                            Some(cranelift_module::FuncOrDataId::Func(id)) => id,
-                            _ => return Err(internal("spctr_str_eq not declared")),
-                        };
-                        let helper_ref = module.declare_func_in_func(id, bcx.func);
-                        let inst = bcx.ins().call(helper_ref, &[lv.val, rv.val]);
-                        let eq = bcx.inst_results(inst)[0];
-                        if matches!(op, BinOp::Eq) {
-                            eq
-                        } else {
-                            let one = bcx.ins().iconst(ir_types::I8, 1);
-                            bcx.ins().bxor(eq, one)
-                        }
-                    }
-                    other => {
-                        return Err(Diagnostic::new(
+                let lty = node_types
+                    .get(&(l.as_ref() as *const _ as usize))
+                    .cloned()
+                    .map(|t| t.apply(env.subst))
+                    .ok_or_else(|| {
+                        Diagnostic::new(
                             span.clone(),
-                            format!("JIT: == not supported for IR type {other}"),
-                            "",
-                        ))
-                    }
+                            "JIT: missing static type for == operand",
+                            "internal",
+                        )
+                    })?;
+                let eq = emit_value_eq(bcx, lv.val, rv.val, &lty, module, span)?;
+                let raw = if matches!(op, BinOp::Eq) {
+                    eq
+                } else {
+                    let one = bcx.ins().iconst(ir_types::I8, 1);
+                    bcx.ins().bxor(eq, one)
                 };
                 return Ok(JVal { val: raw, irty: ir_types::I8 });
             }
