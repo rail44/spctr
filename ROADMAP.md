@@ -59,11 +59,12 @@ AST → Cranelift IR 直行で native コード生成。tree-walker は referenc
 3e. ✅ stdlib 連携：List/String/Number 全 26 関数 — done 2026-05-03
 3f. ✅ `&&` / `||` 短絡、null、ImmediateBlock、任意戻り値 display（B path） — done 2026-05-03
 3g. ✅ list の構造比較（`emit_value_eq` で要素型を辿る再帰 lower）、record/closure 比較は tree-walker と同じく常に false に固定。record-by-string indexing はリテラル限定で parser desugar 経由で既に動作することを確認しテストで固定 — done 2026-05-17
-3h. （未着手）import、Block 内 forward reference 緩和、function 内で後の top-level value への forward reference、性能 polishing
-4. NaN-boxing にスイッチ（必要になったら）— Path A への切り替え選択肢として残す。null と他型の union、record の動的 string indexing（フィールド型異種の場合）はここで初めて意味を持つ
+3h. ✅ 前方参照の緩和。top-level Phase B を「Value 評価 → Function captures populate」の2 段に分け、function→later-value forward ref が動くように。block も同等の Phase 1/2/3 構造（function literal は Phase 1 で alloc + sibling cap を deferred、Phase 2 で value を source order に評価 + deferred cap を機会的に populate、Phase 3 で残り cap = 真サイクルを reject）。`BlockFrame.populated` を `Vec<bool>` に変更。これで block 内 mutual recursion と function→later-value forward ref が動く。value→value forward ref と「value が後方 value を capture する関数を呼ぶ」ケースは silent-wrong だったのを compile-time error に格上げ — done 2026-05-17
+3i. （未着手）import、性能 polishing
+4. NaN-boxing にスイッチ（必要になったら）— Path A への切り替え選択肢として残す。null と他型の union、record の動的 string indexing（フィールド型異種の場合）、value→value forward ref、value-calls-function-with-later-cap はここで初めて意味を持つ
 
-**Phase 3g までできること**：上記すべて + list の構造比較（`[1,2] == [1,2]` が JIT で `true`）。record-by-string indexing は文字列**リテラル**であれば `r.x` と等価に動く（parser が `Access` に desugar するため）。  
-**Phase 3g でできないこと**：import、Block 内 forward reference、function 内で後の top-level value への forward reference、record の動的 string indexing（`r[k]` で `k` が変数）、null と他型の union。最後の 2 つは値タグ（Phase 4 NaN-boxing）を待つ。
+**Phase 3h までできること**：上記すべて + top-level/block での **function→later-value forward ref**（`add_n: (x) => x + n, n: 10, add_n(5)` が 15 を返す）、**block 内 mutual recursion**（`is_even` / `is_odd` が動く）。value→value forward ref と value-calls-function-with-later-cap は明示的なエラーで reject。  
+**Phase 3h でできないこと**：import、value→value forward ref、value-calls-function-with-later-cap（後ろ 2 つは値タグ前提の Phase 4 で対応）。
 
 **Closure layout**: `[fn_ptr: 8][n_caps: 4][_pad: 4][cap_slot_0: 8][cap_slot_1: 8]...`。`spctr_alloc_closure(fn_ptr, n_caps)` でヒープから確保（leak）。すべての関数は `(closure_ptr: i64, args...) -> ret` の ABI。  
 **Record layout**: `[slot_0: 8][slot_1: 8]...`。`spctr_alloc_record(n_slots)` で確保。field offset = `8 * field_index`、field type は `Type::Record` の宣言順。  
