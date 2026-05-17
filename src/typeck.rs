@@ -101,9 +101,10 @@ impl Inferer {
         let a = a.apply(&self.subst);
         let b = b.apply(&self.subst);
         if let Err(reason) = self.unify_inner(&a, &b) {
+            let (sa, sb) = crate::types::pretty_pair(&a, &b);
             self.warnings.push(Diagnostic::new(
                 span.clone(),
-                format!("type mismatch: {} vs {}", a, b),
+                format!("type mismatch: {} vs {}", sa, sb),
                 reason,
             ));
         }
