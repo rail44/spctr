@@ -178,7 +178,116 @@ fn make_frame(defs: &[Bind], parent: &Env, with_names: bool) -> Frame {
     }
 }
 
+// Writes to `current_function` below are load-bearing — they keep the
+// `Rc<Spanned<Expr>>` body alive for the `cur` raw pointer — even though no
+// Rust code subsequently reads the Option directly.
+#[allow(unused_assignments, unused_variables)]
 pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
+    // Tail-call-optimizing loop. Function calls, `if` branches, and
+    // `ImmediateBlock` bodies are all tail-position transitions: instead of
+    // recursing back into `interpret` (which would grow the Rust stack), we
+    // update `cur` to point at the next expression to evaluate and loop.
+    //
+    // Non-tail sub-expressions (Call arguments, Binary operands, List items,
+    // …) are handled by `interpret_value` below, which still recurses
+    // through `interpret` for its children — but Rust stack growth there
+    // is bounded by *expression* depth, not by *call-chain* depth.
+    //
+    // `cur` is a raw pointer so the loop can rebind it across iterations
+    // without fighting the borrow checker. The pointer is always valid:
+    //
+    // - On entry, it points at the caller's `expr`, which is borrowed for
+    //   the entire `interpret` call.
+    // - On a tail `Call`, we move the callee `Value` (which owns the
+    //   `Rc<Spanned<Expr>>` body) into `current_function`, then point `cur`
+    //   at the body inside that Rc. The previous `current_function`'s body
+    //   is dropped only after `cur` has moved off it.
+    // - On a tail `If` / `ImmediateBlock`, `cur` is redirected at a
+    //   sub-expression of the current node, which lives inside the same
+    //   anchor.
+    let mut current_function: Option<Value> = None;
+    let mut current_env: Env = env.clone();
+    let mut cur: *const Spanned<Expr> = expr;
+    loop {
+        // SAFETY: see the comment above — `cur` is anchored either by the
+        // caller's `expr` borrow or by `current_function`'s held Rc.
+        let e: &Spanned<Expr> = unsafe { &*cur };
+        match &e.0 {
+            Expr::Call(callee, args) => {
+                let callee_val = interpret(callee, &current_env)?;
+                let mut arg_vals: Vec<Value> = Vec::with_capacity(args.len());
+                for arg in args {
+                    arg_vals.push(interpret(arg, &current_env)?);
+                }
+                let (next_ptr, next_env) = match &callee_val {
+                    Value::Function(Function::Native {
+                        params,
+                        body,
+                        env: func_env,
+                    }) => {
+                        if params.len() != arg_vals.len() {
+                            return Err(Diagnostic::new(
+                                e.1.clone(),
+                                format!(
+                                    "expected {} arguments, got {}",
+                                    params.len(),
+                                    arg_vals.len()
+                                ),
+                                "argument count mismatch",
+                            ));
+                        }
+                        let binds: Vec<Rc<RefCell<BindState>>> = arg_vals
+                            .into_iter()
+                            .map(|v| Rc::new(RefCell::new(BindState::Done(v))))
+                            .collect();
+                        let frame = Frame {
+                            binds,
+                            names: None,
+                            parent: func_env.clone(),
+                        };
+                        let next_env = Env(Some(Rc::new(frame)));
+                        let next_ptr = body.as_ref() as *const Spanned<Expr>;
+                        (next_ptr, next_env)
+                    }
+                    Value::Function(Function::Foreign(f)) => {
+                        return f(arg_vals, &e.1);
+                    }
+                    other => {
+                        return Err(Diagnostic::new(
+                            e.1.clone(),
+                            format!("cannot call {}", other.type_name()),
+                            "not a function",
+                        ));
+                    }
+                };
+                cur = next_ptr;
+                current_env = next_env;
+                current_function = Some(callee_val);
+            }
+            Expr::If { cond, cons, alt } => {
+                let c = interpret(cond, &current_env)?;
+                cur = if is_truthy(&c) {
+                    cons.as_ref() as *const _
+                } else {
+                    alt.as_ref() as *const _
+                };
+            }
+            Expr::ImmediateBlock(stmt) => {
+                let frame = make_frame(&stmt.definitions, &current_env, false);
+                current_env = Env(Some(Rc::new(frame)));
+                cur = &stmt.body as *const _;
+            }
+            _ => return interpret_value(e, &current_env),
+        }
+    }
+}
+
+/// Evaluate every `Expr` variant *except* the three tail-positionable ones
+/// (`Call`, `If`, `ImmediateBlock`) which are handled directly by the loop
+/// in `interpret`. Child sub-expressions still recurse through `interpret`,
+/// which means they get TCO too — only the *non*-tail sub-evaluations land
+/// here.
+fn interpret_value(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
     let (e, span) = (&expr.0, &expr.1);
     match e {
         Expr::Number(n) => Ok(Value::Number(*n)),
@@ -252,15 +361,6 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
             let frame = make_frame(defs, env, true);
             Ok(Value::Block(Rc::new(frame)))
         }
-        Expr::ImmediateBlock(stmt) => interpret_statement(stmt, env),
-        Expr::If { cond, cons, alt } => {
-            let c = interpret(cond, env)?;
-            if is_truthy(&c) {
-                interpret(cons, env)
-            } else {
-                interpret(alt, env)
-            }
-        }
         Expr::Binary(op, l, r) => {
             let lv = interpret(l, env)?;
             match op {
@@ -286,14 +386,6 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
             let v = interpret(e, env)?;
             apply_unaryop(*op, v, span)
         }
-        Expr::Call(callee, args) => {
-            let cv = interpret(callee, env)?;
-            let mut argvs = Vec::with_capacity(args.len());
-            for arg in args {
-                argvs.push(interpret(arg, env)?);
-            }
-            call_value(cv, argvs, span)
-        }
         Expr::Access(obj, (name, name_span)) => {
             let ov = interpret(obj, env)?;
             let frame = match ov {
@@ -313,6 +405,10 @@ pub fn interpret(expr: &Spanned<Expr>, env: &Env) -> EvalResult {
             let iv = interpret(idx, env)?;
             apply_index(av, iv, span)
         }
+        // The TCO loop in `interpret` handles these directly.
+        Expr::Call(_, _) | Expr::If { .. } | Expr::ImmediateBlock(_) => unreachable!(
+            "interpret_value should never see tail-positionable Expr variants"
+        ),
     }
 }
 

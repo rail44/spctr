@@ -6,7 +6,19 @@ use std::fs;
 use std::process::ExitCode;
 use std::thread;
 
-const INTERP_STACK_SIZE: usize = 64 * 1024 * 1024;
+/// Runtime stack size for the interpreter thread.
+///
+/// Tail-recursive code now goes through the TCO loop in `interp::interpret`
+/// without growing the Rust stack at all, so an accumulator-style
+/// `loop(N, acc) => ...` happily reaches 1M+ iterations regardless of this
+/// limit. The remaining stack consumer is *non*-tail recursion (e.g.
+/// `count(n) => if n == 0 then 0 else count(n - 1) + 1`), which still
+/// builds one Rust frame per spctr call. 8 MiB matches the default Linux
+/// pthread stack and comfortably covers `fib(38)` plus non-tail recursion
+/// up to ~5000 levels — well beyond anything the test suite or examples
+/// exercise. A full iterative trampoline (Phase ζ continuation) would
+/// remove the limit entirely.
+const INTERP_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 #[derive(Parser)]
 #[command(name = "spctr")]
