@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-chumsky = "0.10"
+chumsky = "0.13"
 logos = "0.16"
 anyhow = "1"
 ariadne = "0.6"
