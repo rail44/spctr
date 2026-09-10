@@ -14,7 +14,7 @@ lasso = { version = "0.7", features = ["multi-threaded"] }
 rustyline = "18"
 cranelift-codegen = "0.131"
 cranelift-frontend = "0.131"
-cranelift-jit = "0.131"
+cranelift-jit = "0.135"
 cranelift-module = "0.131"
 cranelift-native = "0.131"
 
